@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-This is a Node.js CLI application that provides an AI-powered web interface for generating FFmpeg commands. Users upload media files and request operations in natural language, receiving specific FFmpeg commands tailored to their files.
+This is a Node.js CLI application that provides an AI-powered web interface for generating structured FFmpeg commands. Users specify file paths directly and request operations in natural language, receiving JSON-formatted FFmpeg commands with automatic file chaining for multi-step operations.
 
 ## Core Architecture
 
@@ -15,25 +15,27 @@ ffmpeg-this/
 │   ├── routes.js       # Express API routes and file handling
 │   └── storage.js      # Persistent storage (config directory)
 ├── public/
-│   ├── index.html      # Frontend HTML
+│   ├── index.html      # Frontend HTML with tabbed settings
 │   ├── app.js          # Frontend JavaScript
 │   └── styles.css      # Frontend styling
-└── uploads/            # Uploaded files directory
+└── /tmp/ffmpeg-this/   # Temporary files for chained operations
 ```
 
 ### Technology Stack
 - **Backend**: Node.js + Express
-- **File Upload**: Multer
+- **File Access**: Direct file system access
 - **Storage**: node-persist (cross-platform config directories)
 - **AI Providers**: OpenAI, Anthropic, Google Gemini, Groq, DeepSeek, Local LLMs
 - **Frontend**: Vanilla JavaScript (no frameworks)
 
 ## Key Features
 
-### 1. File-First Workflow
-- Users start by uploading any file type (FFmpeg supports many formats)
-- After upload, chat interface appears for natural language requests
-- All user requests are formatted using a configurable prompt template
+### 1. Structured JSON Workflow
+- Users specify file paths directly (no upload required)
+- All requests use structured JSON format with placeholder substitution
+- Automatic file chaining for multi-step operations
+- Raw JSON message display with clean substitution strings
+- Server-side path substitution for security and clarity
 
 ### 2. AI Provider Support
 Multiple AI providers with environment variable configuration:
@@ -52,27 +54,91 @@ Saved to OS-appropriate config directories:
 
 Currently persisted:
 - FFmpeg executable path
-- Custom prompt template
+- System prompt (JSON format instructions)
+- JSON template for user requests
 
-### 4. FFmpeg Integration
+### 4. Session-Based File Tracking
+- Tracks input/output file chain per session
+- Automatic temporary file generation
+- Seamless multi-step operation support
+
+### 5. FFmpeg Integration
 - Requires FFmpeg to be available (blocks app if missing)
 - Supports custom FFmpeg path configuration
 - Validates FFmpeg availability on startup
 
-## Prompt Template System
+## Structured JSON System
 
-### Default Template
+### System Prompt (Configurable)
+Defines JSON format and rules for AI responses:
 ```
-Can you give me an ffmpeg command running on the input file {FILE_PATH} to {USER_INPUT}?
+You are an FFmpeg command generator.
+The user will ask you a series of operations to perform.
+
+These will be in this exact JSON format:
+{
+  "input_file": "{INPUT_FILE}",
+  "output_file": "{OUTPUT_FILE}", 
+  "operation": "description of what to do"
+}
+
+For every response, you must provide output in this exact JSON format:
+{
+  "command": "complete ffmpeg command using {INPUT_FILE} and {OUTPUT_FILE} placeholders",
+  "output_file": "{OUTPUT_FILE}",
+  "error": null | "some issue"
+}
+
+Rules:
+- Use {INPUT_FILE} and {OUTPUT_FILE} as placeholders in your ffmpeg commands
+- Do NOT use actual file paths - only use the placeholder strings
+- The system will handle file path substitution automatically
 ```
 
-### Variables
-- `{FILE_PATH}` - Absolute path to uploaded file
-- `{USER_INPUT}` - User's natural language request
+### JSON Template (Configurable)
+```
+{
+  "input_file": "{INPUT_FILE}",
+  "output_file": "{OUTPUT_FILE}",
+  "operation": "{USER_INPUT}"
+}
+```
+
+### Substitution System
+- **Frontend Display**: Shows clean placeholder strings like `{INPUT_FILE}` and `{OUTPUT_FILE}`
+- **Server Processing**: Substitutes actual file paths when communicating with AI
+- **AI Response**: Contains placeholder strings for clean display
+- **Execution**: Server substitutes real paths for actual FFmpeg execution
 
 ### Example Usage
 User types: "convert to grayscale"
-Sent to AI: "Can you give me an ffmpeg command running on the input file /path/to/video.mp4 to convert to grayscale?"
+
+**Displayed to User (Raw JSON):**
+```json
+{
+  "input_file": "{INPUT_FILE}",
+  "output_file": "{OUTPUT_FILE}",
+  "operation": "convert to grayscale"
+}
+```
+
+**Sent to AI (with actual paths):**
+```json
+{
+  "input_file": "/path/to/video.mp4",
+  "output_file": "/tmp/ffmpeg-this/ffmpeg_12345_abc123.tmp",
+  "operation": "convert to grayscale"
+}
+```
+
+**AI Response (with placeholders):**
+```json
+{
+  "command": "ffmpeg -i {INPUT_FILE} -vf format=gray {OUTPUT_FILE}",
+  "output_file": "{OUTPUT_FILE}",
+  "error": null
+}
+```
 
 ## CLI Usage
 
@@ -89,16 +155,17 @@ When `--file` is used:
 - File info is validated and stored globally
 - Frontend skips upload step and goes directly to chat
 - File path is resolved to absolute path
+- Sets initial input file for session tracking
 
 ## API Endpoints
 
 ### File Operations
-- `POST /api/upload` - Upload file via multipart form
-- `GET /api/file/:filename` - Get uploaded file info
+- `POST /api/set-file-path` - Set file path for processing (validates file existence)
+- `POST /api/file-info` - Get file information by path
 - `GET /api/preconfigured-file` - Get pre-configured file info
 
 ### AI Chat
-- `POST /api/chat` - Send message to AI provider
+- `POST /api/chat` - Send structured message to AI provider (always JSON mode)
 - `GET /api/configured-providers` - Get available AI providers
 
 ### Settings
@@ -116,14 +183,22 @@ When `--file` is used:
 - `currentFile` - Currently selected file object
 - `currentProvider` - Selected AI provider
 - `configuredProviders` - Available AI providers
-- `promptHeader` - Current prompt template
+- `systemPrompt` - System prompt for JSON format
+- `jsonTemplate` - Template for formatting user requests
+- `showRawMessages` - Flag to show raw JSON vs structured display
 - `ffmpegAvailable` - FFmpeg status
 
 ### UI Flow
 1. **Initialization**: Check FFmpeg, load settings, check for pre-configured file
-2. **File Upload**: Show file selector or skip if pre-configured
+2. **File Path Entry**: User enters file path, system validates existence
 3. **Chat Interface**: Natural language input with provider selection
-4. **Message Handling**: Template formatting and AI communication
+4. **Message Handling**: Placeholder-based JSON formatting with server-side path substitution
+
+### Settings Interface
+- **Tabbed Modal**: Backend, FFmpeg, and Prompt tabs
+- **Backend Tab**: All AI provider configurations
+- **FFmpeg Tab**: FFmpeg path settings
+- **Prompt Tab**: System prompt, JSON template, display options
 
 ## Development Guidelines
 
@@ -160,22 +235,24 @@ When `--file` is used:
 4. Update provider handling in `public/app.js`
 5. Document environment variables
 
-### Modifying Prompt Template
-- Default template in `src/storage.js`
-- Template loading in `public/app.js` loadPersistentSettings()
-- Template usage in `public/app.js` sendMessage()
-- Variable replacement uses simple `.replace()`
+### Modifying JSON System
+- Default system prompt and JSON template in `src/storage.js`
+- Settings loading in `public/app.js` loadPersistentSettings()
+- JSON template usage in `public/app.js` sendMessage()
+- Placeholder substitution system with server-side path management
+- Session-based file tracking in `src/routes.js`
 
 ### File Type Support
 - Currently accepts all file types (FFmpeg handles validation)
-- Multer configuration in `src/routes.js`
-- Frontend file input in `public/index.html`
+- Direct file system access - no upload restrictions
+- File path validation in `src/routes.js`
+- Frontend file path input in `public/index.html`
 
 ## Troubleshooting
 
 ### Common Issues
 1. **FFmpeg not found**: Check PATH or configure custom path in settings
-2. **File upload fails**: Check file size (500MB limit) and disk space
+2. **File path invalid**: Check file exists and is accessible to the application
 3. **AI provider errors**: Verify API keys and model availability
 4. **Settings not persisting**: Check config directory permissions
 
@@ -183,13 +260,15 @@ When `--file` is used:
 - Server logs provider configurations on startup
 - Frontend logs errors to browser console
 - FFmpeg status shown in UI when unavailable
-- File upload progress shown in UI
+- File path validation errors displayed in UI
+- Session-based file tracking logged server-side
+- JSON parsing errors logged with fallback to raw responses
+- Placeholder substitution logged for debugging
 
 ## Dependencies
 
 ### Runtime Dependencies
 - express: Web server framework
-- multer: File upload handling
 - node-persist: Cross-platform persistent storage
 - cors: Cross-origin resource sharing
 - open: Open browser automatically

@@ -59,29 +59,30 @@ async function set(key, value) {
 async function getAllSettings() {
   try {
     const ffmpegPath = await get('ffmpegPath', '');
-    const promptHeader = await get('promptHeader', 'Can you give me an ffmpeg command running on the input file {FILE_PATH} to {USER_INPUT}?');
     const systemPrompt = await get('systemPrompt', `You are an FFmpeg command generator.
 The user will ask you a series of operations to perform.
 
 These will be in this exact JSON format:
 {
-  "input_file": "UNIQUE_SUBSTITUTION_STRING",
-  "output_file": "UNIQUE_SUBSTITUTION_STRING", 
+  "input_file": "{INPUT_FILE}",
+  "output_file": "{OUTPUT_FILE}", 
   "operation": "description of what to do"
 }
 
 For every response, you must provide output in this exact JSON format:
 {
-  "command": "complete ffmpeg command that can be run directly",
-  "output_file": "UNIQUE_SUBSTITUTION_STRING.ext",
+  "command": "complete ffmpeg command using {INPUT_FILE} and {OUTPUT_FILE} placeholders",
+  "output_file": "{OUTPUT_FILE}",
   "error": null | "some issue"
 }
 
 Rules:
-- Generate complete, runnable ffmpeg commands
+- Use {INPUT_FILE} and {OUTPUT_FILE} as placeholders in your ffmpeg commands
+- Do NOT use actual file paths - only use the placeholder strings
+- Generate complete, runnable ffmpeg commands with placeholders
 - For video operations, maintain quality unless asked to compress
 - For audio extraction, use appropriate codec (mp3, wav, etc.)
-- Suggest an appropriate file extension for the output_file based on the operation
+- The system will handle file path substitution automatically
 - If the operation is complex, break it into the most essential command
 - If the operation is unclear or impossible, explain in the error field`);
     const jsonTemplate = await get('jsonTemplate', `{
@@ -89,34 +90,35 @@ Rules:
   "output_file": "{OUTPUT_FILE}",
   "operation": "{USER_INPUT}"
 }`);
-    return { ffmpegPath, promptHeader, systemPrompt, jsonTemplate };
+    return { ffmpegPath, systemPrompt, jsonTemplate };
   } catch (error) {
     console.error('Error getting all settings:', error);
     return { 
       ffmpegPath: '', 
-      promptHeader: 'Can you give me an ffmpeg command running on the input file {FILE_PATH} to {USER_INPUT}?',
       systemPrompt: `You are an FFmpeg command generator.
 The user will ask you a series of operations to perform.
 
 These will be in this exact JSON format:
 {
-  "input_file": "UNIQUE_SUBSTITUTION_STRING",
-  "output_file": "UNIQUE_SUBSTITUTION_STRING", 
+  "input_file": "{INPUT_FILE}",
+  "output_file": "{OUTPUT_FILE}", 
   "operation": "description of what to do"
 }
 
 For every response, you must provide output in this exact JSON format:
 {
-  "command": "complete ffmpeg command that can be run directly",
-  "output_file": "UNIQUE_SUBSTITUTION_STRING.ext",
+  "command": "complete ffmpeg command using {INPUT_FILE} and {OUTPUT_FILE} placeholders",
+  "output_file": "{OUTPUT_FILE}",
   "error": null | "some issue"
 }
 
 Rules:
-- Generate complete, runnable ffmpeg commands
+- Use {INPUT_FILE} and {OUTPUT_FILE} as placeholders in your ffmpeg commands
+- Do NOT use actual file paths - only use the placeholder strings
+- Generate complete, runnable ffmpeg commands with placeholders
 - For video operations, maintain quality unless asked to compress
 - For audio extraction, use appropriate codec (mp3, wav, etc.)
-- Suggest an appropriate file extension for the output_file based on the operation
+- The system will handle file path substitution automatically
 - If the operation is complex, break it into the most essential command
 - If the operation is unclear or impossible, explain in the error field`,
       jsonTemplate: `{
@@ -133,9 +135,6 @@ async function setAllSettings(settings) {
   try {
     if (settings.ffmpegPath !== undefined) {
       await set('ffmpegPath', settings.ffmpegPath);
-    }
-    if (settings.promptHeader !== undefined) {
-      await set('promptHeader', settings.promptHeader);
     }
     if (settings.systemPrompt !== undefined) {
       await set('systemPrompt', settings.systemPrompt);

@@ -5,25 +5,10 @@ const Anthropic = require('@anthropic-ai/sdk');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const Groq = require('groq-sdk');
 const axios = require('axios');
-const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { getAllSettings, setAllSettings } = require('./storage');
-
-// Configure multer for file uploads
-const upload = multer({
-  dest: 'uploads/',
-  limits: {
-    fileSize: 500 * 1024 * 1024 // 500MB limit
-  }
-  // Accept any file type - ffmpeg supports many formats
-});
-
-// Ensure uploads directory exists
-if (!fs.existsSync('uploads')) {
-  fs.mkdirSync('uploads');
-}
 
 // Global variable for pre-configured file
 let preConfiguredFile = null;
@@ -172,7 +157,7 @@ function getProviderDisplayName(provider) {
 
 // Chat endpoint
 router.post('/chat', async (req, res) => {
-  const { provider, message, conversationHistory = [], useStructuredMode = false, userInput } = req.body;
+  const { provider, message, conversationHistory = [], userInput } = req.body;
   
   if (!apiConfigs[provider]) {
     return res.status(400).json({ error: 'Invalid provider' });
@@ -187,35 +172,29 @@ router.post('/chat', async (req, res) => {
   const sessionId = getSessionId(req);
   
   try {
-    let finalMessage = message;
-    let isFirstMessage = false;
+    // Always use structured mode
+    const settings = await getAllSettings();
+    const currentInputFile = getCurrentInputFile(sessionId);
     
-    // Handle structured mode for JSON workflow
-    if (useStructuredMode) {
-      const settings = await getAllSettings();
-      const currentInputFile = getCurrentInputFile(sessionId);
-      
-      if (!currentInputFile) {
-        return res.status(400).json({ error: 'No input file set for this session' });
-      }
-      
-      // Generate output filename with temporary extension (will be updated based on AI response)
-      const outputFile = generateOutputFilename('tmp');
-      
-      // Format JSON template with substitutions
-      const formattedJsonMessage = settings.jsonTemplate
-        .replace('{INPUT_FILE}', currentInputFile)
-        .replace('{OUTPUT_FILE}', outputFile)
-        .replace('{USER_INPUT}', userInput || message);
-      
-      // Add system prompt as first message if this is the start of conversation
-      if (conversationHistory.length === 0) {
-        conversationHistory.push({ role: 'system', content: settings.systemPrompt });
-        isFirstMessage = true;
-      }
-      
-      finalMessage = formattedJsonMessage;
+    if (!currentInputFile) {
+      return res.status(400).json({ error: 'No input file set for this session' });
     }
+    
+    // Generate output filename with temporary extension (will be updated based on AI response)
+    const outputFile = generateOutputFilename('tmp');
+    
+    // Format JSON template with substitutions
+    const formattedJsonMessage = settings.jsonTemplate
+      .replace('{INPUT_FILE}', currentInputFile)
+      .replace('{OUTPUT_FILE}', outputFile)
+      .replace('{USER_INPUT}', userInput || message);
+    
+    // Add system prompt as first message if this is the start of conversation
+    if (conversationHistory.length === 0) {
+      conversationHistory.push({ role: 'system', content: settings.systemPrompt });
+    }
+    
+    const finalMessage = formattedJsonMessage;
     
     let response;
     
@@ -310,29 +289,40 @@ router.post('/chat', async (req, res) => {
         throw new Error('Unknown provider');
     }
     
-    // Handle structured mode response processing
-    if (useStructuredMode) {
-      try {
-        // Try to parse JSON response
-        const jsonResponse = JSON.parse(response);
+    // Always try to parse structured response
+    try {
+      // Try to parse JSON response
+      const jsonResponse = JSON.parse(response);
+      
+      // If we got a valid JSON response with command and output_file
+      if (jsonResponse.command && jsonResponse.output_file) {
+        // Substitute actual file paths in the command for execution
+        const executableCommand = jsonResponse.command
+          .replace(/{INPUT_FILE}/g, currentInputFile)
+          .replace(/{OUTPUT_FILE}/g, outputFile);
         
-        // If we got a valid JSON response with command and output_file
-        if (jsonResponse.command && jsonResponse.output_file) {
-          // Update the current input file for next operation
-          setCurrentInputFile(sessionId, jsonResponse.output_file);
-          
-          // Return structured response
-          res.json({ 
-            response: response,
-            isStructured: true,
-            parsedResponse: jsonResponse
-          });
-          return;
-        }
-      } catch (parseError) {
-        // If JSON parsing fails, fall back to regular response
-        console.warn('Failed to parse structured response:', parseError.message);
+        // Update the current input file for next operation (use the actual output path)
+        setCurrentInputFile(sessionId, outputFile);
+        
+        // Create a version with substituted paths for execution but keep placeholders for display
+        const executableResponse = {
+          ...jsonResponse,
+          command: executableCommand,
+          output_file: outputFile
+        };
+        
+        // Return structured response with both display and executable versions
+        res.json({ 
+          response: response, // Original response with placeholders for display
+          isStructured: true,
+          parsedResponse: jsonResponse, // Original for display
+          executableResponse: executableResponse // With actual paths for execution
+        });
+        return;
       }
+    } catch (parseError) {
+      // If JSON parsing fails, fall back to regular response
+      console.warn('Failed to parse structured response:', parseError.message);
     }
     
     res.json({ response });
@@ -366,27 +356,42 @@ router.post('/settings', async (req, res) => {
   }
 });
 
-// File upload endpoint
-router.post('/upload', upload.single('file'), (req, res) => {
+// Set file path endpoint
+router.post('/set-file-path', (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' });
+    const { filePath } = req.body;
+    
+    if (!filePath) {
+      return res.status(400).json({ error: 'No file path provided' });
+    }
+
+    // Resolve to absolute path
+    const fullPath = path.resolve(filePath);
+    
+    // Check if file exists
+    if (!fs.existsSync(fullPath)) {
+      return res.status(400).json({ error: 'File does not exist' });
+    }
+    
+    // Check if it's a file (not a directory)
+    const stats = fs.statSync(fullPath);
+    if (!stats.isFile()) {
+      return res.status(400).json({ error: 'Path is not a file' });
     }
 
     // Set this as the current input file for the session
     const sessionId = getSessionId(req);
-    const fullPath = path.resolve(req.file.path);
     setCurrentInputFile(sessionId, fullPath);
 
     // Return file info
     res.json({
       success: true,
       file: {
-        originalName: req.file.originalname,
-        fileName: req.file.filename,
+        originalName: path.basename(fullPath),
+        fileName: path.basename(fullPath),
         path: fullPath,
-        size: req.file.size,
-        mimetype: req.file.mimetype
+        size: stats.size,
+        mimetype: 'application/octet-stream'
       }
     });
   } catch (error) {
@@ -394,18 +399,25 @@ router.post('/upload', upload.single('file'), (req, res) => {
   }
 });
 
-// Get uploaded file info
-router.get('/file/:filename', (req, res) => {
-  const filePath = path.join('uploads', req.params.filename);
-  if (fs.existsSync(filePath)) {
-    const stats = fs.statSync(filePath);
-    res.json({
-      exists: true,
-      size: stats.size,
-      path: filePath
-    });
-  } else {
-    res.status(404).json({ exists: false });
+// Get file info by path
+router.post('/file-info', (req, res) => {
+  try {
+    const { filePath } = req.body;
+    const fullPath = path.resolve(filePath);
+    
+    if (fs.existsSync(fullPath)) {
+      const stats = fs.statSync(fullPath);
+      res.json({
+        exists: true,
+        size: stats.size,
+        path: fullPath,
+        isFile: stats.isFile()
+      });
+    } else {
+      res.status(404).json({ exists: false });
+    }
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 

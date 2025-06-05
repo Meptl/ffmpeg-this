@@ -19,29 +19,29 @@
         <div id="chat-container" class="chat-container">
             <div id="messages" class="messages"></div>
             
-            <!-- File Upload Interface (shown initially) -->
-            <div id="file-upload-container" class="input-container">
-                <div class="file-upload-wrapper">
-                    <input type="file" id="file-input" class="file-input">
-                    <label for="file-input" class="file-input-label">
-                        📁 Choose any file (FFmpeg supports many formats)
-                    </label>
+            <!-- File Path Interface (shown initially) -->
+            <div id="file-path-container" class="input-container">
+                <div class="file-path-wrapper">
+                    <input type="text" id="file-path-input" placeholder="Enter file path (e.g., /Users/username/video.mp4)" class="file-path-input">
+                    <button id="set-file-btn" class="set-file-btn">Set File</button>
                 </div>
             </div>
             
             <!-- Chat Interface (shown after file upload) -->
             <div id="chat-input-container" class="input-container" style="display: none;">
-                <select id="provider-select" class="provider-select">
-                    <option value="openai">OpenAI</option>
-                    <option value="anthropic">Anthropic (Claude)</option>
-                    <option value="gemini">Google Gemini</option>
-                    <option value="groq">Groq</option>
-                    <option value="deepseek">DeepSeek</option>
-                    <option value="local">Local LLM</option>
-                </select>
-                <div class="file-info">
-                    <span id="current-file">No file selected</span>
-                    <button id="change-file-btn" class="change-file-btn">Change File</button>
+                <div class="chat-controls">
+                    <select id="provider-select" class="provider-select">
+                        <option value="openai">OpenAI</option>
+                        <option value="anthropic">Anthropic (Claude)</option>
+                        <option value="gemini">Google Gemini</option>
+                        <option value="groq">Groq</option>
+                        <option value="deepseek">DeepSeek</option>
+                        <option value="local">Local LLM</option>
+                    </select>
+                    <label class="raw-messages-toggle">
+                        <input type="checkbox" id="show-raw-messages-main" checked>
+                        Raw JSON
+                    </label>
                 </div>
                 <input type="text" id="message-input" class="message-input" placeholder="What would you like to do with this file? (e.g., 'convert to grayscale')" />
                 <button id="send-btn" class="send-btn">Send</button>
@@ -53,12 +53,21 @@
     <div id="settings-modal" class="modal">
         <div class="modal-content">
             <span class="close">&times;</span>
-            <h2>API Settings</h2>
+            <h2>Settings</h2>
             
-            <div class="settings-notice">
-                <p><strong>⚠️ Note:</strong> API keys entered here are only stored for this session and will be lost when the server restarts.</p>
-                <p>For persistent configuration, set the corresponding environment variable</p>
+            <!-- Tab Navigation -->
+            <div class="tab-navigation">
+                <button class="tab-button active" data-tab="backend">Backend</button>
+                <button class="tab-button" data-tab="ffmpeg">FFmpeg</button>
+                <button class="tab-button" data-tab="prompt">Prompt</button>
             </div>
+            
+            <!-- Backend Tab -->
+            <div id="backend-tab" class="tab-content active">
+                <div class="settings-notice">
+                    <p><strong>⚠️ Note:</strong> API keys entered here are only stored for this session and will be lost when the server restarts.</p>
+                    <p>For persistent configuration, set the corresponding environment variable</p>
+                </div>
             
             <div class="settings-section">
                 <h3>OpenAI</h3>
@@ -95,31 +104,37 @@
                 <div class="env-hint">DEEPSEEK_API_KEY, DEEPSEEK_MODEL</div>
             </div>
 
-            <div class="settings-section">
-                <h3>Local LLM</h3>
-                <input type="text" id="local-endpoint" placeholder="Endpoint URL (e.g., http://localhost:8080/v1/chat/completions)" class="api-input">
-                <input type="password" id="local-key" placeholder="API Key (optional)" class="api-input">
-                <input type="text" id="local-model" placeholder="Model name (optional)" class="api-input">
-                <textarea id="local-headers" placeholder="Custom Headers (JSON format, optional)" class="api-input headers-input">{}</textarea>
-                <div class="env-hint">LOCAL_LLM_ENDPOINT or OLLAMA_API_BASE, LOCAL_LLM_API_KEY, LOCAL_LLM_MODEL</div>
+                <div class="settings-section">
+                    <h3>Local LLM</h3>
+                    <input type="text" id="local-endpoint" placeholder="Endpoint URL (e.g., http://localhost:8080/v1/chat/completions)" class="api-input">
+                    <input type="password" id="local-key" placeholder="API Key (optional)" class="api-input">
+                    <input type="text" id="local-model" placeholder="Model name (optional)" class="api-input">
+                    <textarea id="local-headers" placeholder="Custom Headers (JSON format, optional)" class="api-input headers-input">{}</textarea>
+                    <div class="env-hint">LOCAL_LLM_ENDPOINT or OLLAMA_API_BASE, LOCAL_LLM_API_KEY, LOCAL_LLM_MODEL</div>
+                </div>
             </div>
 
-            <div class="settings-section">
-                <h3>FFmpeg Configuration</h3>
-                <input type="text" id="ffmpeg-path" placeholder="FFmpeg path (optional, leave empty for system PATH)" class="api-input">
-                <div class="env-hint">This setting is saved persistently to your config directory</div>
+            <!-- FFmpeg Tab -->
+            <div id="ffmpeg-tab" class="tab-content">
+                <div class="settings-section">
+                    <h3>FFmpeg Configuration</h3>
+                    <input type="text" id="ffmpeg-path" placeholder="FFmpeg path (optional, leave empty for system PATH)" class="api-input">
+                </div>
             </div>
 
-            <div class="settings-section">
-                <h3>System Prompt</h3>
-                <textarea id="system-prompt" placeholder="System prompt for structured JSON mode" class="api-input system-prompt-input"></textarea>
-                <div class="env-hint">System prompt that defines the JSON format and rules for structured responses. This setting is saved persistently.</div>
-            </div>
+            <!-- Prompt Tab -->
+            <div id="prompt-tab" class="tab-content">
+                <div class="settings-section">
+                    <h3>System Prompt</h3>
+                    <textarea id="system-prompt" placeholder="System prompt for structured JSON mode" class="api-input system-prompt-input"></textarea>
+                </div>
 
-            <div class="settings-section">
-                <h3>JSON Template</h3>
-                <textarea id="json-template" placeholder="JSON template for structured requests" class="api-input json-template-input"></textarea>
-                <div class="env-hint">Template for formatting user requests. Use {INPUT_FILE}, {OUTPUT_FILE}, and {USER_INPUT} as placeholders. This setting is saved persistently.</div>
+                <div class="settings-section">
+                    <h3>JSON Template</h3>
+                    <textarea id="json-template" placeholder="JSON template for structured requests" class="api-input json-template-input"></textarea>
+                    <div class="env-hint">Template for formatting user requests. Use {INPUT_FILE}, {OUTPUT_FILE}, and {USER_INPUT} as placeholders.</div>
+                </div>
+
             </div>
 
             <button id="save-settings" class="save-btn">Save Settings</button>

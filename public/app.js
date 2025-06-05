@@ -7,6 +7,7 @@ let currentFile = null;
 let systemPrompt = '';
 let jsonTemplate = '';
 let showRawMessages = true; // Flag to show raw messages instead of structured display
+let messagesData = []; // Store message data for re-rendering
 
 // DOM elements
 const messagesDiv = document.getElementById('messages');
@@ -18,13 +19,13 @@ const settingsModal = document.getElementById('settings-modal');
 const closeModal = document.querySelector('.close');
 const saveSettingsBtn = document.getElementById('save-settings');
 const ffmpegStatus = document.getElementById('ffmpeg-status');
+const showRawMessagesToggle = document.getElementById('show-raw-messages-main');
 
-// File upload elements
-const fileInput = document.getElementById('file-input');
-const fileUploadContainer = document.getElementById('file-upload-container');
+// File path elements
+const filePathInput = document.getElementById('file-path-input');
+const setFileBtn = document.getElementById('set-file-btn');
+const filePathContainer = document.getElementById('file-path-container');
 const chatInputContainer = document.getElementById('chat-input-container');
-const currentFileSpan = document.getElementById('current-file');
-const changeFileBtn = document.getElementById('change-file-btn');
 
 // Initialize on load
 initialize();
@@ -65,21 +66,38 @@ window.addEventListener('click', (e) => {
     }
 });
 saveSettingsBtn.addEventListener('click', saveSettings);
-
-// File upload event listeners - auto upload on file selection
-fileInput.addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (file) {
-        uploadFile();
+showRawMessagesToggle.addEventListener('change', (e) => {
+    showRawMessages = e.target.checked;
+    console.log('Raw messages toggle:', showRawMessages); // Debug log
+    reRenderAllMessages();
+    
+    // Show prompt header when raw JSON is enabled
+    if (showRawMessages && systemPrompt) {
+        showPromptHeaderMessage();
+    } else {
+        hidePromptHeaderMessage();
     }
 });
-changeFileBtn.addEventListener('click', () => {
-    // Switch back to file upload interface
-    fileUploadContainer.style.display = 'flex';
-    chatInputContainer.style.display = 'none';
-    currentFile = null;
-    conversationHistory = [];
-    messagesDiv.innerHTML = '';
+
+// Tab switching functionality
+document.addEventListener('click', (e) => {
+    if (e.target.classList.contains('tab-button')) {
+        const targetTab = e.target.getAttribute('data-tab');
+        
+        // Remove active class from all tabs and content
+        document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+        
+        // Add active class to clicked tab and corresponding content
+        e.target.classList.add('active');
+        document.getElementById(targetTab + '-tab').classList.add('active');
+    }
+});
+
+// File path event listeners
+setFileBtn.addEventListener('click', setFilePath);
+filePathInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') setFilePath();
 });
 
 // Load configured providers
@@ -164,11 +182,15 @@ async function checkPreConfiguredFile() {
     }
 }
 
-// Show chat interface (used for both uploaded and pre-configured files)
+// Show chat interface (used for both file paths and pre-configured files)
 function showChatInterface() {
-    fileUploadContainer.style.display = 'none';
+    filePathContainer.style.display = 'none';
     chatInputContainer.style.display = 'flex';
-    currentFileSpan.textContent = currentFile.originalName;
+    
+    // Show prompt header if raw mode is enabled and we have a system prompt
+    if (showRawMessages && systemPrompt) {
+        showPromptHeaderMessage();
+    }
 }
 
 // Check ffmpeg status
@@ -207,23 +229,21 @@ async function checkFFmpegStatus() {
     }
 }
 
-// Upload file
-async function uploadFile() {
-    const file = fileInput.files[0];
-    if (!file) return;
+// Set file path
+async function setFilePath() {
+    const filePath = filePathInput.value.trim();
+    if (!filePath) return;
     
-    const formData = new FormData();
-    formData.append('file', file);
-    
-    // Show loading in the file label
-    const label = document.querySelector('.file-input-label');
-    const originalText = label.textContent;
-    label.textContent = 'Uploading...';
+    // Show loading in the button
+    const originalText = setFileBtn.textContent;
+    setFileBtn.textContent = 'Checking...';
+    setFileBtn.disabled = true;
     
     try {
-        const response = await fetch('/api/upload', {
+        const response = await fetch('/api/set-file-path', {
             method: 'POST',
-            body: formData
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filePath })
         });
         
         const data = await response.json();
@@ -235,16 +255,18 @@ async function uploadFile() {
             showChatInterface();
             
             // Show success message
-            addMessage('info', `File uploaded successfully: ${currentFile.originalName}`);
+            addMessage('info', `File set successfully: ${currentFile.originalName}`);
             addMessage('info', 'Ask for FFmpeg operations. For example: "convert to grayscale", "reduce file size", "extract audio", etc.');
             
         } else {
-            addMessage('error', `Upload failed: ${data.error}`);
-            label.textContent = originalText;
+            addMessage('error', `Error: ${data.error}`);
+            setFileBtn.textContent = originalText;
+            setFileBtn.disabled = false;
         }
     } catch (error) {
-        addMessage('error', `Upload error: ${error.message}`);
-        label.textContent = originalText;
+        addMessage('error', `Error: ${error.message}`);
+        setFileBtn.textContent = originalText;
+        setFileBtn.disabled = false;
     }
 }
 
@@ -253,24 +275,24 @@ async function sendMessage() {
     const userInput = messageInput.value.trim();
     if (!userInput || !currentFile) return;
     
-    let messageToSend = '';
-    let conversationHistoryToSend = [...conversationHistory];
+    // Always use structured mode, send raw user input
+    const messageToSend = userInput;
     
-    if (useStructuredMode) {
-        // In structured mode, send the raw user input
-        messageToSend = userInput;
+    // Format the JSON message that will be sent to show user what's actually being sent
+    const formattedJsonMessage = jsonTemplate
+        .replace('{INPUT_FILE}', '{INPUT_FILE}')
+        .replace('{OUTPUT_FILE}', '{OUTPUT_FILE}')
+        .replace('{USER_INPUT}', userInput);
+    
+    // Store both user input and formatted JSON for re-rendering
+    storeUserMessageData(userInput, formattedJsonMessage);
+    
+    // Add message to UI - show formatted JSON in raw mode, user input in structured mode
+    if (showRawMessages) {
+        addMessageToUI('user', formattedJsonMessage);
     } else {
-        // In legacy mode, format with prompt template
-        messageToSend = promptHeader
-            .replace('{FILE_PATH}', currentFile.path)
-            .replace('{USER_INPUT}', userInput);
-        
-        // Add formatted message to conversation history for legacy mode
-        conversationHistoryToSend.push({ role: 'user', content: messageToSend });
+        addMessageToUI('user', userInput);
     }
-    
-    // Add user's original input to UI
-    addMessage('user', userInput);
     messageInput.value = '';
     
     // Show loading indicator
@@ -280,8 +302,8 @@ async function sendMessage() {
         const requestBody = {
             provider: currentProvider,
             message: messageToSend,
-            conversationHistory: conversationHistoryToSend.slice(-10), // Keep last 10 messages for context
-            useStructuredMode: useStructuredMode,
+            conversationHistory: conversationHistory.slice(-10), // Keep last 10 messages for context
+            useStructuredMode: true,
             userInput: userInput
         };
         
@@ -298,16 +320,13 @@ async function sendMessage() {
         
         if (response.ok) {
             if (data.isStructured && data.parsedResponse) {
-                // Handle structured response
+                // Always use structured message when we have parsed data
                 addStructuredMessage('assistant', data.response, data.parsedResponse);
-                conversationHistory.push({ role: 'assistant', content: data.response });
             } else {
-                // Handle regular response
+                // Fallback to regular message
                 addMessage('assistant', data.response);
-                if (!useStructuredMode) {
-                    conversationHistory.push({ role: 'assistant', content: data.response });
-                }
             }
+            conversationHistory.push({ role: 'assistant', content: data.response });
         } else {
             addMessage('error', `Error: ${data.error}`);
         }
@@ -317,13 +336,101 @@ async function sendMessage() {
     }
 }
 
-// Add message to UI
+// Add message to UI and store data
 function addMessage(type, content, isLoading = false) {
+    // Don't store loading messages
+    if (!isLoading && type !== 'loading') {
+        storeMessageData(type, content);
+    }
+    
+    return addMessageToUI(type, content, isLoading);
+}
+
+// Store message data for re-rendering
+function storeMessageData(type, content, parsedResponse = null) {
+    messagesData.push({
+        type,
+        content,
+        parsedResponse,
+        timestamp: Date.now()
+    });
+}
+
+// Store user message data with both formats
+function storeUserMessageData(userInput, formattedJson) {
+    messagesData.push({
+        type: 'user',
+        content: userInput,
+        formattedJson: formattedJson,
+        timestamp: Date.now()
+    });
+}
+
+// Re-render all messages based on current showRawMessages setting
+function reRenderAllMessages() {
+    console.log('Re-rendering messages, count:', messagesData.length); // Debug log
+    messagesDiv.innerHTML = '';
+    
+    // Show prompt header if raw mode is enabled and we have messages
+    if (showRawMessages && systemPrompt && messagesData.length > 0) {
+        showPromptHeaderMessage();
+    }
+    
+    messagesData.forEach((msgData, index) => {
+        console.log(`Message ${index}:`, msgData.type, msgData.parsedResponse ? 'has parsed data' : 'no parsed data'); // Debug log
+        if (msgData.type === 'assistant' && msgData.parsedResponse) {
+            if (showRawMessages) {
+                addMessageToUI('assistant', msgData.content);
+            } else {
+                addStructuredMessageToUI('assistant', msgData.content, msgData.parsedResponse);
+            }
+        } else if (msgData.type === 'user' && msgData.formattedJson) {
+            // User message with both formats available
+            if (showRawMessages) {
+                addMessageToUI('user', msgData.formattedJson);
+            } else {
+                addMessageToUI('user', msgData.content);
+            }
+        } else {
+            addMessageToUI(msgData.type, msgData.content);
+        }
+    });
+}
+
+// Show prompt header message
+function showPromptHeaderMessage() {
+    const existingHeader = document.getElementById('prompt-header-message');
+    if (existingHeader) return; // Already shown
+    
+    const headerDiv = document.createElement('div');
+    headerDiv.id = 'prompt-header-message';
+    headerDiv.className = 'message system prompt-header';
+    headerDiv.innerHTML = `
+        <div class="message-header">System Prompt</div>
+        <div class="message-content">
+            <pre><code>${formatMessageContent(systemPrompt)}</code></pre>
+        </div>
+    `;
+    
+    messagesDiv.insertBefore(headerDiv, messagesDiv.firstChild);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+}
+
+// Hide prompt header message
+function hidePromptHeaderMessage() {
+    const existingHeader = document.getElementById('prompt-header-message');
+    if (existingHeader) {
+        existingHeader.remove();
+    }
+}
+
+// Add message to UI only (without storing data)
+function addMessageToUI(type, content, isLoading = false) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${type}`;
     if (isLoading) messageDiv.classList.add('loading');
     
-    const id = Date.now();
+    const id = Date.now() + Math.random();
     messageDiv.id = `msg-${id}`;
     
     // Format message content (handle code blocks, etc.)
@@ -348,12 +455,24 @@ function removeMessage(id) {
     if (element) element.remove();
 }
 
-// Add structured message to UI
+// Add structured message to UI and store data
 function addStructuredMessage(type, rawContent, parsedResponse) {
+    // Store with parsed response data
+    storeMessageData(type, rawContent, parsedResponse);
+    
+    if (showRawMessages) {
+        return addMessageToUI(type, rawContent);
+    } else {
+        return addStructuredMessageToUI(type, rawContent, parsedResponse);
+    }
+}
+
+// Add structured message to UI only (without storing data)
+function addStructuredMessageToUI(type, rawContent, parsedResponse) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${type} structured`;
     
-    const id = Date.now();
+    const id = Date.now() + Math.random();
     messageDiv.id = `msg-${id}`;
     
     const headerText = type === 'assistant' ? currentProvider : type;
@@ -401,14 +520,6 @@ function addStructuredMessage(type, rawContent, parsedResponse) {
     return id;
 }
 
-// Update mode display
-function updateModeDisplay() {
-    if (useStructuredMode) {
-        messageInput.placeholder = "What operation do you want to perform? (e.g., 'convert to grayscale')";
-    } else {
-        messageInput.placeholder = "What would you like to do with this file? (e.g., 'convert to grayscale')";
-    }
-}
 
 // Format message content
 function formatMessageContent(content) {
@@ -458,10 +569,6 @@ async function loadCurrentSettings() {
             ffmpegPathInput.value = persistentSettings.ffmpegPath || '';
         }
         
-        const promptHeaderInput = document.getElementById('prompt-header');
-        if (promptHeaderInput) {
-            promptHeaderInput.value = persistentSettings.promptHeader || 'Can you give me an ffmpeg command running on the input file {FILE_PATH} to {USER_INPUT}?';
-        }
         
         const systemPromptInput = document.getElementById('system-prompt');
         if (systemPromptInput) {
@@ -525,9 +632,8 @@ async function saveSettings() {
         });
     }
     
-    // Save persistent settings (ffmpeg path and all prompt settings)
+    // Save persistent settings (ffmpeg path and prompt settings)
     const ffmpegPath = document.getElementById('ffmpeg-path').value;
-    const newPromptHeader = document.getElementById('prompt-header').value;
     const newSystemPrompt = document.getElementById('system-prompt')?.value || '';
     const newJsonTemplate = document.getElementById('json-template')?.value || '';
     
@@ -536,14 +642,12 @@ async function saveSettings() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
             ffmpegPath,
-            promptHeader: newPromptHeader,
             systemPrompt: newSystemPrompt,
             jsonTemplate: newJsonTemplate
         })
     });
     
     // Update global prompt settings
-    promptHeader = newPromptHeader;
     systemPrompt = newSystemPrompt;
     jsonTemplate = newJsonTemplate;
     
