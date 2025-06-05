@@ -8,6 +8,7 @@ const axios = require('axios');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const multer = require('multer');
 const { getAllSettings, setAllSettings } = require('./storage');
 
 // Global variable for pre-configured file
@@ -21,6 +22,33 @@ const tmpDir = path.join(os.tmpdir(), 'ffmpeg-this');
 if (!fs.existsSync(tmpDir)) {
   fs.mkdirSync(tmpDir, { recursive: true });
 }
+
+// Create uploads directory for user files
+const uploadsDir = path.join(tmpDir, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+// Configure multer for file uploads
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadsDir);
+  },
+  filename: (req, file, cb) => {
+    // Generate unique filename with original extension
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substring(2, 8);
+    const ext = path.extname(file.originalname);
+    cb(null, `upload_${timestamp}_${random}${ext}`);
+  }
+});
+
+const upload = multer({ 
+  storage,
+  limits: {
+    fileSize: 500 * 1024 * 1024 // 500MB limit
+  }
+});
 
 // Generate unique output filename
 function generateOutputFilename(extension = 'out') {
@@ -431,6 +459,37 @@ router.get('/preconfigured-file', (req, res) => {
     res.json({ file: preConfiguredFile });
   } else {
     res.json({ file: null });
+  }
+});
+
+// File upload endpoint
+router.post('/upload-file', upload.single('file'), (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const uploadedFile = req.file;
+    const fullPath = uploadedFile.path;
+
+    // Set this as the current input file for the session
+    const sessionId = getSessionId(req);
+    setCurrentInputFile(sessionId, fullPath);
+
+    // Return file info
+    res.json({
+      success: true,
+      file: {
+        originalName: uploadedFile.originalname,
+        fileName: uploadedFile.filename,
+        path: fullPath,
+        size: uploadedFile.size,
+        mimetype: uploadedFile.mimetype
+      }
+    });
+  } catch (error) {
+    console.error('Upload error:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 

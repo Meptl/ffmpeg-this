@@ -161,24 +161,33 @@ h1 {
 }
 
 .message-content pre {
-    background-color: #2c3e50;
-    color: #ecf0f1;
-    padding: 0.5rem;
-    border-radius: 4px;
+    background-color: #1e1e1e;
+    color: #d4d4d4;
+    padding: 1rem;
+    border-radius: 6px;
     overflow-x: auto;
     margin: 0.5rem 0;
+    border: 1px solid #404040;
+    font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+    font-size: 0.9rem;
+    line-height: 1.4;
 }
 
 .message-content code {
-    background-color: #e8e8e8;
+    background-color: #f5f5f5;
+    color: #d73a49;
     padding: 0.2rem 0.4rem;
     border-radius: 3px;
-    font-family: 'Courier New', monospace;
+    font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+    font-size: 0.9em;
+    border: 1px solid #e1e4e8;
 }
 
 .message-content pre code {
     background-color: transparent;
+    color: inherit;
     padding: 0;
+    border: none;
 }
 
 /* Input Container */
@@ -192,48 +201,72 @@ h1 {
     flex-wrap: wrap;
 }
 
-/* File Path Styles */
-.file-path-wrapper {
-    flex: 1;
+/* File Upload Styles */
+.file-upload-wrapper {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    gap: 0.5rem;
+    gap: 1rem;
+    width: 100%;
+    max-width: 400px;
+    margin: 0 auto;
 }
 
-.file-path-input {
-    flex: 1;
-    padding: 0.75rem;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    font-size: 1rem;
-    outline: none;
-    transition: border-color 0.3s;
-}
-
-.file-path-input:focus {
-    border-color: #3498db;
-}
-
-.set-file-btn {
-    background-color: #3498db;
-    color: white;
-    border: none;
-    padding: 0.75rem 1rem;
-    border-radius: 4px;
+.file-upload-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem 2rem;
+    background: white;
+    color: #666;
+    border: 2px dashed #ccc;
+    border-radius: 8px;
     cursor: pointer;
     font-size: 1rem;
     font-weight: 500;
-    transition: background-color 0.3s;
-    white-space: nowrap;
+    text-align: center;
+    transition: all 0.3s ease;
+    min-width: 200px;
 }
 
-.set-file-btn:hover {
-    background-color: #2980b9;
+.file-upload-button:hover {
+    border-color: #999;
+    color: #333;
+    background: #f9f9f9;
 }
 
-.set-file-btn:disabled {
-    background-color: #bdc3c7;
-    cursor: not-allowed;
+.file-upload-button:active {
+    background: #f0f0f0;
+}
+
+#file-picker {
+    display: none;
+}
+
+.file-status {
+    text-align: center;
+    font-size: 0.9rem;
+    color: #666;
+    min-height: 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+.file-status.success {
+    color: #27ae60;
+    font-weight: 500;
+}
+
+.file-status.error {
+    color: #e74c3c;
+    font-weight: 500;
+}
+
+.file-status.loading {
+    color: #3498db;
+    font-weight: 500;
 }
 
 
@@ -488,18 +521,15 @@ h1 {
         order: -1;
     }
     
-    .file-path-wrapper {
+    .file-upload-wrapper {
         width: 100%;
-        flex-direction: column;
-        gap: 0.5rem;
+        max-width: none;
     }
     
-    .file-path-input {
+    .file-upload-button {
         width: 100%;
-    }
-    
-    .set-file-btn {
-        width: 100%;
+        min-width: auto;
+        padding: 1.25rem 2rem;
     }
     
     .modal-content {
@@ -534,13 +564,16 @@ h1 {
 }
 
 .command-section pre {
-    background-color: #ffffff;
-    border: 1px solid #dee2e6;
-    border-radius: 4px;
-    padding: 0.75rem;
+    background-color: #1e1e1e;
+    color: #d4d4d4;
+    border: 1px solid #404040;
+    border-radius: 6px;
+    padding: 1rem;
     margin: 0;
     overflow-x: auto;
+    font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
     font-size: 0.9rem;
+    line-height: 1.4;
 }
 
 .output-section {
@@ -642,12 +675,15 @@ h1 {
 }
 
 .message.prompt-header pre {
-    background-color: #ffffff;
-    border: 1px solid #dee2e6;
-    border-radius: 4px;
+    background-color: #1e1e1e;
+    color: #d4d4d4;
+    border: 1px solid #404040;
+    border-radius: 6px;
     padding: 1rem;
     margin: 0;
+    font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
     font-size: 0.85rem;
+    line-height: 1.4;
     max-height: 200px;
     overflow-y: auto;
 }

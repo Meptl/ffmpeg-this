@@ -21,9 +21,12 @@
             
             <!-- File Path Interface (shown initially) -->
             <div id="file-path-container" class="input-container">
-                <div class="file-path-wrapper">
-                    <input type="text" id="file-path-input" placeholder="Enter file path (e.g., /Users/username/video.mp4)" class="file-path-input">
-                    <button id="set-file-btn" class="set-file-btn">Set File</button>
+                <div class="file-upload-wrapper">
+                    <label for="file-picker" class="file-upload-button">
+                        Choose a file
+                    </label>
+                    <input type="file" id="file-picker" accept="*/*">
+                    <div id="file-status" class="file-status"></div>
                 </div>
             </div>
             
@@ -43,7 +46,7 @@
                         Raw JSON
                     </label>
                 </div>
-                <input type="text" id="message-input" class="message-input" placeholder="What would you like to do with this file? (e.g., 'convert to grayscale')" />
+                <input type="text" id="message-input" class="message-input" placeholder='e.g. "convert to grayscale", "extract audio"' />
                 <button id="send-btn" class="send-btn">Send</button>
             </div>
         </div>

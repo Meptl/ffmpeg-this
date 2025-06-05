@@ -22,8 +22,8 @@ const ffmpegStatus = document.getElementById('ffmpeg-status');
 const showRawMessagesToggle = document.getElementById('show-raw-messages-main');
 
 // File path elements
-const filePathInput = document.getElementById('file-path-input');
-const setFileBtn = document.getElementById('set-file-btn');
+const filePicker = document.getElementById('file-picker');
+const fileStatus = document.getElementById('file-status');
 const filePathContainer = document.getElementById('file-path-container');
 const chatInputContainer = document.getElementById('chat-input-container');
 
@@ -40,6 +40,11 @@ async function initialize() {
             // Skip file upload, go directly to chat
             currentFile = preConfiguredFile;
             showChatInterface();
+        } else {
+            // No pre-configured file, open file picker automatically
+            setTimeout(() => {
+                filePicker.click();
+            }, 100);
         }
         await loadConfiguredProviders();
     }
@@ -94,11 +99,8 @@ document.addEventListener('click', (e) => {
     }
 });
 
-// File path event listeners
-setFileBtn.addEventListener('click', setFilePath);
-filePathInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') setFilePath();
-});
+// File picker event listeners
+filePicker.addEventListener('change', handleFileSelection);
 
 // Load configured providers
 async function loadConfiguredProviders() {
@@ -171,8 +173,6 @@ async function checkPreConfiguredFile() {
         
         if (data.file) {
             console.log('Pre-configured file found:', data.file.originalName);
-            addMessage('info', `Using pre-configured file: ${data.file.originalName}`);
-            addMessage('info', 'You can ask for FFmpeg commands to process this file. For example: "convert to grayscale", "reduce file size", "extract audio", etc.');
             return data.file;
         }
         return null;
@@ -229,21 +229,23 @@ async function checkFFmpegStatus() {
     }
 }
 
-// Set file path
-async function setFilePath() {
-    const filePath = filePathInput.value.trim();
-    if (!filePath) return;
+// Handle file selection from file picker
+async function handleFileSelection(event) {
+    const file = event.target.files[0];
+    if (!file) return;
     
-    // Show loading in the button
-    const originalText = setFileBtn.textContent;
-    setFileBtn.textContent = 'Checking...';
-    setFileBtn.disabled = true;
+    // Show loading status
+    fileStatus.textContent = '📁 Processing file...';
+    fileStatus.className = 'file-status loading';
     
     try {
-        const response = await fetch('/api/set-file-path', {
+        // Create a FormData object to send the file
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        const response = await fetch('/api/upload-file', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ filePath })
+            body: formData
         });
         
         const data = await response.json();
@@ -251,24 +253,25 @@ async function setFilePath() {
         if (response.ok) {
             currentFile = data.file;
             
-            // Switch to chat interface
-            showChatInterface();
+            // Show success status
+            fileStatus.textContent = `✅ ${file.name} selected`;
+            fileStatus.className = 'file-status success';
             
-            // Show success message
-            addMessage('info', `File set successfully: ${currentFile.originalName}`);
-            addMessage('info', 'Ask for FFmpeg operations. For example: "convert to grayscale", "reduce file size", "extract audio", etc.');
+            // Switch to chat interface after a brief delay
+            setTimeout(() => {
+                showChatInterface();
+            }, 500);
             
         } else {
-            addMessage('error', `Error: ${data.error}`);
-            setFileBtn.textContent = originalText;
-            setFileBtn.disabled = false;
+            fileStatus.textContent = `❌ Error: ${data.error}`;
+            fileStatus.className = 'file-status error';
         }
     } catch (error) {
-        addMessage('error', `Error: ${error.message}`);
-        setFileBtn.textContent = originalText;
-        setFileBtn.disabled = false;
+        fileStatus.textContent = `❌ Error: ${error.message}`;
+        fileStatus.className = 'file-status error';
     }
 }
+
 
 // Send message
 async function sendMessage() {
