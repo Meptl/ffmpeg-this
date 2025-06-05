@@ -8,7 +8,6 @@ const axios = require('axios');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const multer = require('multer');
 const { getAllSettings, setAllSettings } = require('./storage');
 
 // Global variable for pre-configured file
@@ -23,32 +22,6 @@ if (!fs.existsSync(tmpDir)) {
   fs.mkdirSync(tmpDir, { recursive: true });
 }
 
-// Create uploads directory for user files
-const uploadsDir = path.join(tmpDir, 'uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
-
-// Configure multer for file uploads
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadsDir);
-  },
-  filename: (req, file, cb) => {
-    // Generate unique filename with original extension
-    const timestamp = Date.now();
-    const random = Math.random().toString(36).substring(2, 8);
-    const ext = path.extname(file.originalname);
-    cb(null, `upload_${timestamp}_${random}${ext}`);
-  }
-});
-
-const upload = multer({ 
-  storage,
-  limits: {
-    fileSize: 500 * 1024 * 1024 // 500MB limit
-  }
-});
 
 // Generate unique output filename
 function generateOutputFilename(extension = 'out') {
@@ -324,19 +297,29 @@ router.post('/chat', async (req, res) => {
       
       // If we got a valid JSON response with command and output_file
       if (jsonResponse.command && jsonResponse.output_file) {
+        // Extract the extension from the AI's output_file response
+        const extensionMatch = jsonResponse.output_file.match(/\{OUTPUT_FILE\}\.(\w+)$/);
+        let finalOutputFile = outputFile;
+        
+        if (extensionMatch && extensionMatch[1]) {
+          // Replace the temporary extension with the one specified by AI
+          const extension = extensionMatch[1];
+          finalOutputFile = outputFile.replace(/\.tmp$/, `.${extension}`);
+        }
+        
         // Substitute actual file paths in the command for execution
         const executableCommand = jsonResponse.command
           .replace(/{INPUT_FILE}/g, currentInputFile)
-          .replace(/{OUTPUT_FILE}/g, outputFile);
+          .replace(/{OUTPUT_FILE}/g, finalOutputFile);
         
         // Update the current input file for next operation (use the actual output path)
-        setCurrentInputFile(sessionId, outputFile);
+        setCurrentInputFile(sessionId, finalOutputFile);
         
         // Create a version with substituted paths for execution but keep placeholders for display
         const executableResponse = {
           ...jsonResponse,
           command: executableCommand,
-          output_file: outputFile
+          output_file: finalOutputFile
         };
         
         // Return structured response with both display and executable versions
@@ -459,37 +442,6 @@ router.get('/preconfigured-file', (req, res) => {
     res.json({ file: preConfiguredFile });
   } else {
     res.json({ file: null });
-  }
-});
-
-// File upload endpoint
-router.post('/upload-file', upload.single('file'), (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' });
-    }
-
-    const uploadedFile = req.file;
-    const fullPath = uploadedFile.path;
-
-    // Set this as the current input file for the session
-    const sessionId = getSessionId(req);
-    setCurrentInputFile(sessionId, fullPath);
-
-    // Return file info
-    res.json({
-      success: true,
-      file: {
-        originalName: uploadedFile.originalname,
-        fileName: uploadedFile.filename,
-        path: fullPath,
-        size: uploadedFile.size,
-        mimetype: uploadedFile.mimetype
-      }
-    });
-  } catch (error) {
-    console.error('Upload error:', error);
-    res.status(500).json({ error: error.message });
   }
 });
 
