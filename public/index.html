@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FFmpeg This - AI Chat Interface</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>FFmpeg This</h1>
+            <div class="header-controls">
+                <div id="ffmpeg-status" class="ffmpeg-status"></div>
+                <button id="settings-btn" class="settings-btn">⚙️ Settings</button>
+            </div>
+        </header>
+
+        <div id="chat-container" class="chat-container">
+            <div id="messages" class="messages"></div>
+            
+            <!-- File Upload Interface (shown initially) -->
+            <div id="file-upload-container" class="input-container">
+                <div class="file-upload-wrapper">
+                    <input type="file" id="file-input" class="file-input">
+                    <label for="file-input" class="file-input-label">
+                        📁 Choose any file (FFmpeg supports many formats)
+                    </label>
+                </div>
+            </div>
+            
+            <!-- Chat Interface (shown after file upload) -->
+            <div id="chat-input-container" class="input-container" style="display: none;">
+                <select id="provider-select" class="provider-select">
+                    <option value="openai">OpenAI</option>
+                    <option value="anthropic">Anthropic (Claude)</option>
+                    <option value="gemini">Google Gemini</option>
+                    <option value="groq">Groq</option>
+                    <option value="deepseek">DeepSeek</option>
+                    <option value="local">Local LLM</option>
+                </select>
+                <div class="file-info">
+                    <span id="current-file">No file selected</span>
+                    <button id="change-file-btn" class="change-file-btn">Change File</button>
+                </div>
+                <input type="text" id="message-input" class="message-input" placeholder="What would you like to do with this file? (e.g., 'convert to grayscale')" />
+                <button id="send-btn" class="send-btn">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>API Settings</h2>
+            
+            <div class="settings-notice">
+                <p><strong>⚠️ Note:</strong> API keys entered here are only stored for this session and will be lost when the server restarts.</p>
+                <p>For persistent configuration, set the corresponding environment variable</p>
+            </div>
+            
+            <div class="settings-section">
+                <h3>OpenAI</h3>
+                <input type="password" id="openai-key" placeholder="API Key (sk-...)" class="api-input">
+                <input type="text" id="openai-model" placeholder="Model (e.g., gpt-4-turbo-preview)" class="api-input" value="gpt-4-turbo-preview">
+                <div class="env-hint">OPENAI_API_KEY, OPENAI_MODEL</div>
+            </div>
+
+            <div class="settings-section">
+                <h3>Anthropic (Claude)</h3>
+                <input type="password" id="anthropic-key" placeholder="API Key" class="api-input">
+                <input type="text" id="anthropic-model" placeholder="Model (e.g., claude-3-opus-20240229)" class="api-input" value="claude-3-opus-20240229">
+                <div class="env-hint">ANTHROPIC_API_KEY, ANTHROPIC_MODEL</div>
+            </div>
+
+            <div class="settings-section">
+                <h3>Google Gemini</h3>
+                <input type="password" id="gemini-key" placeholder="API Key" class="api-input">
+                <input type="text" id="gemini-model" placeholder="Model (e.g., gemini-pro)" class="api-input" value="gemini-pro">
+                <div class="env-hint">GEMINI_API_KEY or GOOGLE_API_KEY, GEMINI_MODEL</div>
+            </div>
+
+            <div class="settings-section">
+                <h3>Groq</h3>
+                <input type="password" id="groq-key" placeholder="API Key" class="api-input">
+                <input type="text" id="groq-model" placeholder="Model (e.g., mixtral-8x7b-32768)" class="api-input" value="mixtral-8x7b-32768">
+                <div class="env-hint">GROQ_API_KEY, GROQ_MODEL</div>
+            </div>
+
+            <div class="settings-section">
+                <h3>DeepSeek</h3>
+                <input type="password" id="deepseek-key" placeholder="API Key" class="api-input">
+                <input type="text" id="deepseek-model" placeholder="Model (e.g., deepseek-chat)" class="api-input" value="deepseek-chat">
+                <div class="env-hint">DEEPSEEK_API_KEY, DEEPSEEK_MODEL</div>
+            </div>
+
+            <div class="settings-section">
+                <h3>Local LLM</h3>
+                <input type="text" id="local-endpoint" placeholder="Endpoint URL (e.g., http://localhost:8080/v1/chat/completions)" class="api-input">
+                <input type="password" id="local-key" placeholder="API Key (optional)" class="api-input">
+                <input type="text" id="local-model" placeholder="Model name (optional)" class="api-input">
+                <textarea id="local-headers" placeholder="Custom Headers (JSON format, optional)" class="api-input headers-input">{}</textarea>
+                <div class="env-hint">LOCAL_LLM_ENDPOINT or OLLAMA_API_BASE, LOCAL_LLM_API_KEY, LOCAL_LLM_MODEL</div>
+            </div>
+
+            <div class="settings-section">
+                <h3>FFmpeg Configuration</h3>
+                <input type="text" id="ffmpeg-path" placeholder="FFmpeg path (optional, leave empty for system PATH)" class="api-input">
+                <div class="env-hint">This setting is saved persistently to your config directory</div>
+            </div>
+
+            <div class="settings-section">
+                <h3>System Prompt</h3>
+                <textarea id="system-prompt" placeholder="System prompt for structured JSON mode" class="api-input system-prompt-input"></textarea>
+                <div class="env-hint">System prompt that defines the JSON format and rules for structured responses. This setting is saved persistently.</div>
+            </div>
+
+            <div class="settings-section">
+                <h3>JSON Template</h3>
+                <textarea id="json-template" placeholder="JSON template for structured requests" class="api-input json-template-input"></textarea>
+                <div class="env-hint">Template for formatting user requests. Use {INPUT_FILE}, {OUTPUT_FILE}, and {USER_INPUT} as placeholders. This setting is saved persistently.</div>
+            </div>
+
+            <button id="save-settings" class="save-btn">Save Settings</button>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
