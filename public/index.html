@@ -19,13 +19,11 @@
         <div id="chat-container" class="chat-container">
             <div id="messages" class="messages"></div>
             
-            <!-- File Path Interface (shown initially) -->
-            <div id="file-path-container" class="input-container">
+            <!-- File Upload Interface (shown initially) -->
+            <div id="file-upload-container" class="input-container">
                 <div class="file-upload-wrapper">
-                    <label for="file-picker" class="file-upload-button">
-                        Choose a file
-                    </label>
-                    <input type="file" id="file-picker" accept="*/*">
+                    <input type="file" id="file-input" class="file-input" accept="*/*">
+                    <label for="file-input" class="file-label">Choose File</label>
                     <div id="file-status" class="file-status"></div>
                 </div>
             </div>
@@ -112,7 +110,7 @@
                     <input type="text" id="local-endpoint" placeholder="Endpoint URL (e.g., http://localhost:8080/v1/chat/completions)" class="api-input">
                     <input type="password" id="local-key" placeholder="API Key (optional)" class="api-input">
                     <input type="text" id="local-model" placeholder="Model name (optional)" class="api-input">
-                    <textarea id="local-headers" placeholder="Custom Headers (JSON format, optional)" class="api-input headers-input">{}</textarea>
+                    <textarea id="local-headers" placeholder='Custom HTTP Headers, e.g. {"Authorization": "Bearer token"}' class="api-input headers-input">{}</textarea>
                     <div class="env-hint">LOCAL_LLM_ENDPOINT or OLLAMA_API_BASE, LOCAL_LLM_API_KEY, LOCAL_LLM_MODEL</div>
                 </div>
             </div>

@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
 const { OpenAI } = require('openai');
 const Anthropic = require('@anthropic-ai/sdk');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
@@ -16,11 +17,27 @@ let preConfiguredFile = null;
 // Global variable for tracking current input file per session
 const sessionFileTracking = new Map(); // sessionId -> currentInputFile
 
-// Create tmp directory for intermediate files
+// Create tmp directory for intermediate files and uploads
 const tmpDir = path.join(os.tmpdir(), 'ffmpeg-this');
 if (!fs.existsSync(tmpDir)) {
   fs.mkdirSync(tmpDir, { recursive: true });
 }
+
+// Configure multer for file uploads
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, tmpDir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const upload = multer({ 
+  storage: storage,
+  limits: { fileSize: 500 * 1024 * 1024 } // 500MB limit
+});
 
 
 // Generate unique output filename
@@ -442,6 +459,35 @@ router.get('/preconfigured-file', (req, res) => {
     res.json({ file: preConfiguredFile });
   } else {
     res.json({ file: null });
+  }
+});
+
+// Upload file endpoint
+router.post('/upload-file', upload.single('file'), (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const file = req.file;
+    
+    // Set this as the current input file for the session
+    const sessionId = getSessionId(req);
+    setCurrentInputFile(sessionId, file.path);
+
+    // Return file info
+    res.json({
+      success: true,
+      file: {
+        originalName: file.originalname,
+        fileName: file.filename,
+        path: file.path,
+        size: file.size,
+        mimetype: file.mimetype
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 

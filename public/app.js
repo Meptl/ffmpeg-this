@@ -8,6 +8,7 @@ let systemPrompt = '';
 let jsonTemplate = '';
 let showRawMessages = true; // Flag to show raw messages instead of structured display
 let messagesData = []; // Store message data for re-rendering
+let settingsChanged = false; // Track if settings have been modified
 
 // DOM elements
 const messagesDiv = document.getElementById('messages');
@@ -21,10 +22,10 @@ const saveSettingsBtn = document.getElementById('save-settings');
 const ffmpegStatus = document.getElementById('ffmpeg-status');
 const showRawMessagesToggle = document.getElementById('show-raw-messages-main');
 
-// File path elements
-const filePicker = document.getElementById('file-picker');
+// File upload elements
+const fileInput = document.getElementById('file-input');
 const fileStatus = document.getElementById('file-status');
-const filePathContainer = document.getElementById('file-path-container');
+const fileUploadContainer = document.getElementById('file-upload-container');
 const chatInputContainer = document.getElementById('chat-input-container');
 
 // Initialize on load
@@ -32,6 +33,11 @@ initialize();
 
 async function initialize() {
     await loadPersistentSettings();
+    setupSettingsChangeTracking(); // Setup change tracking after DOM is loaded
+    
+    // Sync showRawMessages with checkbox state on page load
+    showRawMessages = showRawMessagesToggle.checked;
+    
     const ffmpegOk = await checkFFmpegStatus();
     if (ffmpegOk) {
         // Check for pre-configured file first
@@ -40,11 +46,6 @@ async function initialize() {
             // Skip file upload, go directly to chat
             currentFile = preConfiguredFile;
             showChatInterface();
-        } else {
-            // No pre-configured file, open file picker automatically
-            setTimeout(() => {
-                filePicker.click();
-            }, 100);
         }
         await loadConfiguredProviders();
     }
@@ -60,14 +61,15 @@ providerSelect.addEventListener('change', (e) => {
 });
 settingsBtn.addEventListener('click', () => {
     settingsModal.style.display = 'block';
+    settingsChanged = false; // Reset change tracking when opening modal
     loadCurrentSettings();
 });
 closeModal.addEventListener('click', () => {
-    settingsModal.style.display = 'none';
+    closeSettingsModal();
 });
 window.addEventListener('click', (e) => {
     if (e.target === settingsModal) {
-        settingsModal.style.display = 'none';
+        closeSettingsModal();
     }
 });
 saveSettingsBtn.addEventListener('click', saveSettings);
@@ -99,8 +101,8 @@ document.addEventListener('click', (e) => {
     }
 });
 
-// File picker event listeners
-filePicker.addEventListener('change', handleFileSelection);
+// File upload event listener
+fileInput.addEventListener('change', handleFileUpload);
 
 // Load configured providers
 async function loadConfiguredProviders() {
@@ -182,10 +184,18 @@ async function checkPreConfiguredFile() {
     }
 }
 
-// Show chat interface (used for both file paths and pre-configured files)
+// Show chat interface (used for both file uploads and pre-configured files)
 function showChatInterface() {
-    filePathContainer.style.display = 'none';
+    fileUploadContainer.style.display = 'none';
     chatInputContainer.style.display = 'flex';
+    
+    // Ensure showRawMessages is synced with checkbox state
+    showRawMessages = showRawMessagesToggle.checked;
+    
+    // Re-render any existing messages to respect the current toggle state
+    if (messagesData.length > 0) {
+        reRenderAllMessages();
+    }
     
     // Show prompt header if raw mode is enabled and we have a system prompt
     if (showRawMessages && systemPrompt) {
@@ -229,20 +239,19 @@ async function checkFFmpegStatus() {
     }
 }
 
-// Handle file selection from file picker
-async function handleFileSelection(event) {
-    const file = event.target.files[0];
+// Handle file upload
+async function handleFileUpload() {
+    const file = fileInput.files[0];
     if (!file) return;
     
     // Show loading status
-    fileStatus.textContent = '📁 Processing file...';
+    fileStatus.textContent = '📁 Uploading file...';
     fileStatus.className = 'file-status loading';
     
+    const formData = new FormData();
+    formData.append('file', file);
+    
     try {
-        // Create a FormData object to send the file
-        const formData = new FormData();
-        formData.append('file', file);
-        
         const response = await fetch('/api/upload-file', {
             method: 'POST',
             body: formData
@@ -254,7 +263,7 @@ async function handleFileSelection(event) {
             currentFile = data.file;
             
             // Show success status
-            fileStatus.textContent = `✅ ${file.name} selected`;
+            fileStatus.textContent = `✅ ${data.file.originalName} uploaded`;
             fileStatus.className = 'file-status success';
             
             // Switch to chat interface after a brief delay
@@ -324,7 +333,7 @@ async function sendMessage() {
         if (response.ok) {
             if (data.isStructured && data.parsedResponse) {
                 // Always use structured message when we have parsed data
-                addStructuredMessage('assistant', data.response, data.parsedResponse);
+                addStructuredMessage('assistant', data.response, data.parsedResponse, data.executableResponse);
             } else {
                 // Fallback to regular message
                 addMessage('assistant', data.response);
@@ -350,11 +359,12 @@ function addMessage(type, content, isLoading = false) {
 }
 
 // Store message data for re-rendering
-function storeMessageData(type, content, parsedResponse = null) {
+function storeMessageData(type, content, parsedResponse = null, executableResponse = null) {
     messagesData.push({
         type,
         content,
         parsedResponse,
+        executableResponse,
         timestamp: Date.now()
     });
 }
@@ -385,7 +395,7 @@ function reRenderAllMessages() {
             if (showRawMessages) {
                 addMessageToUI('assistant', msgData.content);
             } else {
-                addStructuredMessageToUI('assistant', msgData.content, msgData.parsedResponse);
+                addStructuredMessageToUI('assistant', msgData.content, msgData.parsedResponse, msgData.executableResponse);
             }
         } else if (msgData.type === 'user' && msgData.formattedJson) {
             // User message with both formats available
@@ -459,19 +469,19 @@ function removeMessage(id) {
 }
 
 // Add structured message to UI and store data
-function addStructuredMessage(type, rawContent, parsedResponse) {
+function addStructuredMessage(type, rawContent, parsedResponse, executableResponse = null) {
     // Store with parsed response data
-    storeMessageData(type, rawContent, parsedResponse);
+    storeMessageData(type, rawContent, parsedResponse, executableResponse);
     
     if (showRawMessages) {
         return addMessageToUI(type, rawContent);
     } else {
-        return addStructuredMessageToUI(type, rawContent, parsedResponse);
+        return addStructuredMessageToUI(type, rawContent, parsedResponse, executableResponse);
     }
 }
 
 // Add structured message to UI only (without storing data)
-function addStructuredMessageToUI(type, rawContent, parsedResponse) {
+function addStructuredMessageToUI(type, rawContent, parsedResponse, executableResponse = null) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${type} structured`;
     
@@ -491,17 +501,21 @@ function addStructuredMessageToUI(type, rawContent, parsedResponse) {
                 </div>
             </div>`;
     } else {
+        // Use executable command with real paths if available, otherwise use parsed response
+        const commandToShow = executableResponse ? executableResponse.command : parsedResponse.command;
+        const outputFileToShow = executableResponse ? executableResponse.output_file : parsedResponse.output_file;
+        
         structuredHTML += `
             <div class="message-content structured-content">
                 <div class="command-section">
-                    <strong>FFmpeg Command:</strong>
-                    <pre><code>${parsedResponse.command}</code></pre>
+                    <strong>FFmpeg Command (ready to run):</strong>
+                    <pre><code>${commandToShow}</code></pre>
                 </div>`;
         
-        if (parsedResponse.output_file) {
+        if (outputFileToShow) {
             structuredHTML += `
                 <div class="output-section">
-                    <strong>Output File:</strong> <code>${parsedResponse.output_file}</code>
+                    <strong>Output File:</strong> <code>${outputFileToShow}</code>
                 </div>`;
         }
         
@@ -587,8 +601,34 @@ async function loadCurrentSettings() {
     }
 }
 
+// Close settings modal with optional change check
+function closeSettingsModal() {
+    if (settingsChanged) {
+        const shouldSave = confirm('You have unsaved changes. Would you like to save them before closing?');
+        if (shouldSave) {
+            saveSettings(true); // Pass flag to suppress success alert
+            return;
+        }
+    }
+    settingsModal.style.display = 'none';
+}
+
+// Track changes in settings inputs
+function setupSettingsChangeTracking() {
+    // Track all input changes in the settings modal
+    const settingsInputs = settingsModal.querySelectorAll('input, textarea, select');
+    settingsInputs.forEach(input => {
+        input.addEventListener('change', () => {
+            settingsChanged = true;
+        });
+        input.addEventListener('input', () => {
+            settingsChanged = true;
+        });
+    });
+}
+
 // Save settings
-async function saveSettings() {
+async function saveSettings(suppressAlert = false) {
     const providers = ['openai', 'anthropic', 'gemini', 'groq', 'deepseek'];
     
     for (const provider of providers) {
@@ -654,8 +694,12 @@ async function saveSettings() {
     systemPrompt = newSystemPrompt;
     jsonTemplate = newJsonTemplate;
     
+    settingsChanged = false; // Reset change tracking after saving
     settingsModal.style.display = 'none';
-    alert('Settings saved successfully!');
+    
+    if (!suppressAlert) {
+        alert('Settings saved successfully!');
+    }
     
     // Re-check ffmpeg status and reload providers
     const ffmpegOk = await checkFFmpegStatus();
