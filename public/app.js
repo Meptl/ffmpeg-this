@@ -4,6 +4,7 @@ let currentProvider = '';
 let configuredProviders = [];
 let ffmpegAvailable = false;
 let currentFile = null;
+let initialFile = null;
 // Hardcoded prompts (moved from backend)
 const systemPrompt = `You are an FFmpeg command generator.
 The user will ask you a series of operations to perform.
@@ -81,6 +82,7 @@ async function initialize() {
         if (preConfiguredFile) {
             // Skip file upload, go directly to chat
             currentFile = preConfiguredFile;
+            initialFile = { ...preConfiguredFile }; // Store initial file separately
             showChatInterface();
         }
         await loadConfiguredProviders();
@@ -115,7 +117,6 @@ window.addEventListener('click', (e) => {
 saveSettingsBtn.addEventListener('click', saveSettings);
 showRawMessagesToggle.addEventListener('change', (e) => {
     showRawMessages = e.target.checked;
-    console.log('Raw messages toggle:', showRawMessages); // Debug log
     reRenderAllMessages();
     
     // Show prompt header when raw JSON is enabled
@@ -233,15 +234,15 @@ function showChatInterface() {
         showPromptHeaderMessage();
     }
     
-    // Add initial media embed for the current file
-    if (currentFile) {
+    // Add initial media embed for the initial file
+    if (initialFile) {
         addInitialFileEmbed();
     }
 }
 
 // Add initial media embed when chat starts
 function addInitialFileEmbed() {
-    if (!currentFile) return;
+    if (!initialFile) return;
     
     // Remove existing file embed if it exists
     const existingEmbed = document.getElementById('initial-file-embed');
@@ -253,16 +254,11 @@ function addInitialFileEmbed() {
     messageDiv.className = 'message info file-intro';
     messageDiv.id = 'initial-file-embed';
     
-    const mediaEmbed = createMediaEmbed(currentFile.filePath, currentFile.originalName);
+    const mediaEmbed = createCleanMediaEmbed(initialFile.filePath, initialFile.originalName);
     
     messageDiv.innerHTML = `
-        <div class="message-header">Current Input File</div>
         <div class="message-content">
             ${mediaEmbed}
-            <p style="margin-top: 1rem; color: #6c757d; font-size: 0.9rem;">
-                Ready to process <strong>${currentFile.originalName}</strong>. 
-                Describe what you'd like to do with this file.
-            </p>
         </div>
     `;
     
@@ -335,6 +331,7 @@ async function handleFileUpload() {
         
         if (response.ok) {
             currentFile = data.file;
+            initialFile = { ...data.file }; // Store initial file separately
             
             // Show success status
             fileStatus.textContent = `✅ ${data.file.originalName} uploaded`;
@@ -457,7 +454,6 @@ function storeUserMessageData(userInput, formattedJson) {
 
 // Re-render all messages based on current showRawMessages setting
 function reRenderAllMessages() {
-    console.log('Re-rendering messages, count:', messagesData.length); // Debug log
     messagesDiv.innerHTML = '';
     
     // Show prompt header if raw mode is enabled and we have messages
@@ -465,13 +461,12 @@ function reRenderAllMessages() {
         showPromptHeaderMessage();
     }
     
-    // Re-add initial file embed if we have a current file
-    if (currentFile) {
+    // Re-add initial file embed if we have an initial file
+    if (initialFile) {
         addInitialFileEmbed();
     }
     
     messagesData.forEach((msgData, index) => {
-        console.log(`Message ${index}:`, msgData.type, msgData.parsedResponse ? 'has parsed data' : 'no parsed data'); // Debug log
         if (msgData.type === 'assistant' && msgData.parsedResponse) {
             if (showRawMessages) {
                 addMessageToUI('assistant', msgData.content);
@@ -557,12 +552,6 @@ function addStructuredMessage(type, rawContent, parsedResponse, executableRespon
     // Store with parsed response data
     storeMessageData(type, rawContent, parsedResponse, executableResponse);
     
-    console.log('addStructuredMessage called:', {
-        type: type,
-        showRawMessages: showRawMessages,
-        hasParsedResponse: !!parsedResponse,
-        hasExecutableResponse: !!executableResponse
-    });
     
     if (showRawMessages) {
         return addMessageToUI(type, rawContent);
@@ -594,13 +583,10 @@ function addStructuredMessageToUI(type, rawContent, parsedResponse, executableRe
     } else {
         // Use executable command with real paths if available, otherwise use parsed response
         const commandToShow = executableResponse ? executableResponse.command : parsedResponse.command;
-        const outputFileToShow = executableResponse ? executableResponse.output_file : null;
-        const outputExtension = parsedResponse.output_extension;
         
         structuredHTML += `
             <div class="message-content structured-content">
                 <div class="command-section">
-                    <strong>FFmpeg Command (ready to run):</strong>
                     <pre><code>${commandToShow}</code></pre>
                     <div class="command-buttons">
                         <button class="copy-btn" data-command="${commandToShow.replace(/"/g, '&quot;')}" onclick="copyToClipboard(this.getAttribute('data-command'), this)">
@@ -610,42 +596,6 @@ function addStructuredMessageToUI(type, rawContent, parsedResponse, executableRe
                             ▶️ Execute Command
                         </button>
                     </div>
-                </div>`;
-        
-        if (outputExtension) {
-            structuredHTML += `
-                <div class="output-section">
-                    <strong>Output Format:</strong> <code>.${outputExtension}</code>
-                </div>`;
-        }
-        
-        if (outputFileToShow) {
-            structuredHTML += `
-                <div class="output-section">
-                    <strong>Output File:</strong> <code>${outputFileToShow}</code>
-                </div>`;
-            
-            // Add media embed for output file if it exists and is a media file
-            if (executableResponse && executableResponse.output_file) {
-                const mediaType = getMediaType(executableResponse.output_file);
-                if (mediaType !== 'unknown') {
-                    const fileName = executableResponse.output_file.split('/').pop();
-                    const mediaEmbed = createMediaEmbed(executableResponse.output_file, fileName);
-                    structuredHTML += `
-                        <div class="output-preview">
-                            <strong>Output Preview:</strong>
-                            ${mediaEmbed}
-                        </div>`;
-                }
-            }
-        }
-        
-        structuredHTML += `
-                <div class="raw-response">
-                    <details>
-                        <summary>Raw Response</summary>
-                        <pre><code>${formatMessageContent(rawContent)}</code></pre>
-                    </details>
                 </div>
             </div>`;
     }
@@ -734,6 +684,60 @@ function createMediaEmbed(filePath, fileName) {
             return `
                 <div class="media-embed file-embed">
                     <div class="media-header">📄 ${safeFileName} ${downloadButton}</div>
+                    <div class="file-info">File type not supported for preview</div>
+                </div>`;
+    }
+}
+
+function createCleanMediaEmbed(filePath, fileName) {
+    const mediaType = getMediaType(filePath);
+    const safeFileName = fileName.replace(/[<>&"']/g, function(match) {
+        const htmlEntities = { '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' };
+        return htmlEntities[match];
+    });
+    
+    // Download icon SVG - resembles Firefox download icon (downward arrow to tray)
+    const downloadIcon = `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" class="download-icon">
+        <path d="M8 11L3 6h3V1h4v5h3l-5 5z"/>
+        <rect x="1" y="12" width="14" height="2" rx="1"/>
+    </svg>`;
+    
+    const downloadButton = `<button class="download-btn" onclick="downloadFile('${filePath.replace(/'/g, "\\'")}', '${safeFileName.replace(/'/g, "\\'")}')">
+        ${downloadIcon}
+    </button>`;
+    
+    switch (mediaType) {
+        case 'audio':
+            return `
+                <div class="media-embed audio-embed">
+                    <div class="media-header">${downloadButton}</div>
+                    <audio controls>
+                        <source src="/api/serve-file?path=${encodeURIComponent(filePath)}" type="audio/${getFileExtension(filePath)}">
+                        Your browser does not support the audio element.
+                    </audio>
+                </div>`;
+        
+        case 'video':
+            return `
+                <div class="media-embed video-embed">
+                    <div class="media-header">${downloadButton}</div>
+                    <video controls>
+                        <source src="/api/serve-file?path=${encodeURIComponent(filePath)}" type="video/${getFileExtension(filePath)}">
+                        Your browser does not support the video element.
+                    </video>
+                </div>`;
+        
+        case 'image':
+            return `
+                <div class="media-embed image-embed">
+                    <div class="media-header">${downloadButton}</div>
+                    <img src="/api/serve-file?path=${encodeURIComponent(filePath)}" alt="${safeFileName}" loading="lazy">
+                </div>`;
+        
+        default:
+            return `
+                <div class="media-embed file-embed">
+                    <div class="media-header">${downloadButton}</div>
                     <div class="file-info">File type not supported for preview</div>
                 </div>`;
     }
@@ -926,8 +930,10 @@ async function executeFFmpegCommand(command, outputFile, messageId) {
             executeBtn.classList.remove('executing');
             executeBtn.classList.add('executed');
             
-            // Add execution result message
-            addExecutionResultMessage(result, messageId);
+            // Add media embed as separate message if there's an output file
+            if (result.outputFile) {
+                addOutputMediaMessage(result.outputFile, messageId);
+            }
             
             // If there's an output file, update the current file for chaining
             if (result.outputFile) {
@@ -1012,20 +1018,6 @@ function addExecutionResultMessage(result, parentMessageId) {
                 <strong>✅ ${result.message}</strong>
             </div>`;
     
-    if (result.outputFile) {
-        const fileName = result.outputFile.split('/').pop();
-        const mediaEmbed = createMediaEmbed(result.outputFile, fileName);
-        
-        resultHTML += `
-            <div class="output-result">
-                <strong>Generated Output:</strong>
-                ${mediaEmbed}
-                <p style="margin-top: 0.5rem; font-size: 0.9rem; color: #6c757d;">
-                    This output is now ready as input for your next command.
-                </p>
-            </div>`;
-    }
-    
     if (result.stderr && result.stderr.trim()) {
         resultHTML += `
             <div class="ffmpeg-log">
@@ -1049,7 +1041,41 @@ function addExecutionResultMessage(result, parentMessageId) {
         messagesDiv.appendChild(messageDiv);
     }
     
+    // Add media embed as separate message if there's an output file
+    if (result.outputFile) {
+        addOutputMediaMessage(result.outputFile, id);
+    }
+    
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    
+    return id;
+}
+
+// Add output media as a separate message
+function addOutputMediaMessage(outputFilePath, afterMessageId) {
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'message assistant output-media';
+    
+    const id = Date.now() + Math.random() + 0.1; // Slight offset to ensure unique ID
+    messageDiv.id = `msg-${id}`;
+    
+    const fileName = outputFilePath.split('/').pop();
+    const mediaEmbed = createMediaEmbed(outputFilePath, fileName);
+    
+    messageDiv.innerHTML = `
+        <div class="message-content">
+            ${mediaEmbed}
+        </div>
+    `;
+    
+    // Insert after the command message
+    const escapedId = afterMessageId.toString().replace(/\./g, '\\.');
+    const afterMessage = document.getElementById(`msg-${escapedId}`);
+    if (afterMessage && afterMessage.nextSibling) {
+        messagesDiv.insertBefore(messageDiv, afterMessage.nextSibling);
+    } else {
+        messagesDiv.appendChild(messageDiv);
+    }
     
     return id;
 }

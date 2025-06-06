@@ -139,6 +139,13 @@ h1 {
     text-align: center;
 }
 
+.message.info.file-intro {
+    background-color: #3498db;
+    color: white;
+    align-self: flex-end;
+    text-align: left;
+}
+
 .message.loading {
     animation: pulse 1.5s infinite;
 }
@@ -665,6 +672,8 @@ h1 {
     border: 1px solid #dee2e6;
     border-radius: 6px;
     margin-bottom: 1rem;
+    align-self: center;
+    max-width: 90%;
 }
 
 .message.prompt-header .message-header {
