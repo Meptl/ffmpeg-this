@@ -4,8 +4,43 @@ let currentProvider = '';
 let configuredProviders = [];
 let ffmpegAvailable = false;
 let currentFile = null;
-let systemPrompt = '';
-let jsonTemplate = '';
+// Hardcoded prompts (moved from backend)
+const systemPrompt = `You are an FFmpeg command generator.
+The user will ask you a series of operations to perform.
+
+These will be in this exact JSON format:
+{
+  "input_filename": "example.mp4",
+  "operation": "description of what to do",
+  "use_placeholders": true
+}
+
+For every response, you must provide output in this exact JSON format:
+{
+  "command": "complete ffmpeg command using {INPUT_FILE} and {OUTPUT_FILE} placeholders",
+  "output_extension": "ext",
+  "error": null | "some issue"
+}
+
+Rules:
+- When use_placeholders is true (which it always will be), you MUST use {INPUT_FILE} and {OUTPUT_FILE} as placeholders in your ffmpeg commands
+- Do NOT use actual file paths - only use the placeholder strings {INPUT_FILE} and {OUTPUT_FILE}
+- Always provide output_extension - this field is mandatory
+- Always include the -y flag in your ffmpeg commands to overwrite output files
+- Set output_extension to the appropriate file extension (without the dot)
+  Examples:
+  - For MP3 audio: output_extension: "mp3"
+  - For MP4 video: output_extension: "mp4"
+  - For WAV audio: output_extension: "wav"
+  - For GIF: output_extension: "gif"
+  - For PNG image: output_extension: "png"
+  - Choose extension based on the output format in your ffmpeg command
+- Generate complete, runnable ffmpeg commands with placeholders
+- For video operations, maintain quality unless asked to compress
+- For audio extraction, use appropriate codec (mp3, wav, etc.)
+- The system will handle file path substitution automatically
+- If the operation is complex, break it into the most essential command
+- If the operation is unclear or impossible, explain in the error field`;
 let showRawMessages = false; // Flag to show raw messages instead of structured display
 let messagesData = []; // Store message data for re-rendering
 let settingsChanged = false; // Track if settings have been modified
@@ -157,15 +192,6 @@ async function loadPersistentSettings() {
     try {
         const response = await fetch('/api/settings');
         const settings = await response.json();
-        
-        // Load prompt settings into global state
-        if (settings.systemPrompt) {
-            systemPrompt = settings.systemPrompt;
-        }
-        if (settings.jsonTemplate) {
-            jsonTemplate = settings.jsonTemplate;
-        }
-        
         return settings;
     } catch (error) {
         console.error('Error loading persistent settings:', error);
@@ -338,11 +364,13 @@ async function sendMessage() {
     // Always use structured mode, send raw user input
     const messageToSend = userInput;
     
-    // Format the JSON message that will be sent to show user what's actually being sent
-    const formattedJsonMessage = jsonTemplate
-        .replace('{INPUT_FILE}', '{INPUT_FILE}')
-        .replace('{OUTPUT_FILE}', '{OUTPUT_FILE}')
-        .replace('{USER_INPUT}', userInput);
+    // Build JSON message for display with actual server filename
+    const jsonMessage = {
+        input_filename: currentFile.fileName, // Use server-generated filename, not originalName
+        operation: userInput,
+        use_placeholders: true
+    };
+    const formattedJsonMessage = JSON.stringify(jsonMessage, null, 2);
     
     // Store both user input and formatted JSON for re-rendering
     storeUserMessageData(userInput, formattedJsonMessage);

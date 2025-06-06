@@ -210,14 +210,56 @@ router.post('/chat', async (req, res) => {
     // Get just the filename from the current input file
     const inputFilename = path.basename(currentInputFile);
     
-    // Format JSON template with substitutions
-    const formattedJsonMessage = settings.jsonTemplate
-      .replace('{INPUT_FILENAME}', inputFilename)
-      .replace('{USER_INPUT}', userInput || message);
+    // Build JSON message directly
+    const jsonMessage = {
+      input_filename: inputFilename,
+      operation: userInput || message,
+      use_placeholders: true
+    };
+    
+    const formattedJsonMessage = JSON.stringify(jsonMessage, null, 2);
+    
+    // Hardcoded system prompt
+    const systemPrompt = `You are an FFmpeg command generator.
+The user will ask you a series of operations to perform.
+
+These will be in this exact JSON format:
+{
+  "input_filename": "example.mp4",
+  "operation": "description of what to do",
+  "use_placeholders": true
+}
+
+For every response, you must provide output in this exact JSON format:
+{
+  "command": "complete ffmpeg command using {INPUT_FILE} and {OUTPUT_FILE} placeholders",
+  "output_extension": "ext",
+  "error": null | "some issue"
+}
+
+Rules:
+- When use_placeholders is true (which it always will be), you MUST use {INPUT_FILE} and {OUTPUT_FILE} as placeholders in your ffmpeg commands
+- Do NOT use actual file paths - only use the placeholder strings {INPUT_FILE} and {OUTPUT_FILE}
+- Always provide output_extension - this field is mandatory
+- Always include the -y flag in your ffmpeg commands to overwrite output files
+- Set output_extension to the appropriate file extension (without the dot)
+  Examples:
+  - For MP3 audio: output_extension: "mp3"
+  - For MP4 video: output_extension: "mp4"
+  - For WAV audio: output_extension: "wav"
+  - For GIF: output_extension: "gif"
+  - For PNG image: output_extension: "png"
+  - Choose extension based on the output format in your ffmpeg command
+- Generate complete, runnable ffmpeg commands with placeholders
+- For video operations, maintain quality unless asked to compress
+- For audio extraction, use appropriate codec (mp3, wav, etc.)
+- The system will handle file path substitution automatically
+- If the operation is complex, break it into the most essential command
+- If the operation is unclear or impossible, explain in the error field`;
     
     // Add system prompt as first message if this is the start of conversation
     if (conversationHistory.length === 0) {
-      conversationHistory.push({ role: 'system', content: settings.systemPrompt });
+      conversationHistory.push({ role: 'system', content: systemPrompt });
     }
     
     const finalMessage = formattedJsonMessage;

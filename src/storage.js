@@ -26,46 +26,7 @@ function getConfigFilePath() {
 
 // Default settings
 const defaultSettings = {
-  ffmpegPath: '',
-  systemPrompt: `You are an FFmpeg command generator.
-The user will ask you a series of operations to perform.
-
-These will be in this exact JSON format:
-{
-  "input_filename": "example.mp4",
-  "operation": "description of what to do"
-}
-
-For every response, you must provide output in this exact JSON format:
-{
-  "command": "complete ffmpeg command using {INPUT_FILE} and {OUTPUT_FILE} placeholders",
-  "output_extension": "ext",
-  "error": null | "some issue"
-}
-
-Rules:
-- Use {INPUT_FILE} and {OUTPUT_FILE} as placeholders in your ffmpeg commands
-- Do NOT use actual file paths - only use the placeholder strings
-- Always provide output_extension - this field is mandatory
-- Always include the -y flag in your ffmpeg commands to overwrite output files
-- Set output_extension to the appropriate file extension (without the dot)
-  Examples:
-  - For MP3 audio: output_extension: "mp3"
-  - For MP4 video: output_extension: "mp4"
-  - For WAV audio: output_extension: "wav"
-  - For GIF: output_extension: "gif"
-  - For PNG image: output_extension: "png"
-  - Choose extension based on the output format in your ffmpeg command
-- Generate complete, runnable ffmpeg commands with placeholders
-- For video operations, maintain quality unless asked to compress
-- For audio extraction, use appropriate codec (mp3, wav, etc.)
-- The system will handle file path substitution automatically
-- If the operation is complex, break it into the most essential command
-- If the operation is unclear or impossible, explain in the error field`,
-  jsonTemplate: `{
-  "input_filename": "{INPUT_FILENAME}",
-  "operation": "{USER_INPUT}"
-}`
+  ffmpegPath: ''
 };
 
 // Load settings from file
@@ -120,11 +81,9 @@ async function initStorage() {
       await storage.init({ dir: configDir });
       
       const ffmpegPath = await storage.getItem('ffmpegPath') || '';
-      const systemPrompt = await storage.getItem('systemPrompt') || defaultSettings.systemPrompt;
-      const jsonTemplate = await storage.getItem('jsonTemplate') || defaultSettings.jsonTemplate;
       
-      // Save to new format
-      saveSettings({ ffmpegPath, systemPrompt, jsonTemplate });
+      // Save to new format (only ffmpegPath is configurable)
+      saveSettings({ ffmpegPath });
       
       // Remove old storage
       fs.rmSync(oldStorageDir, { recursive: true, force: true });
@@ -150,17 +109,7 @@ async function set(key, value) {
 
 // Get all settings
 async function getAllSettings() {
-  const settings = loadSettings();
-  
-  // Use defaults for empty system prompt and json template
-  if (!settings.systemPrompt || settings.systemPrompt.trim() === '') {
-    settings.systemPrompt = defaultSettings.systemPrompt;
-  }
-  if (!settings.jsonTemplate || settings.jsonTemplate.trim() === '') {
-    settings.jsonTemplate = defaultSettings.jsonTemplate;
-  }
-  
-  return settings;
+  return loadSettings();
 }
 
 // Set all settings
