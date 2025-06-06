@@ -692,11 +692,21 @@ function createMediaEmbed(filePath, fileName) {
         return htmlEntities[match];
     });
     
+    // Download icon SVG - resembles Firefox download icon (downward arrow to tray)
+    const downloadIcon = `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" class="download-icon">
+        <path d="M8 11L3 6h3V1h4v5h3l-5 5z"/>
+        <rect x="1" y="12" width="14" height="2" rx="1"/>
+    </svg>`;
+    
+    const downloadButton = `<button class="download-btn" onclick="downloadFile('${filePath.replace(/'/g, "\\'")}', '${safeFileName.replace(/'/g, "\\'")}')">
+        ${downloadIcon}
+    </button>`;
+    
     switch (mediaType) {
         case 'audio':
             return `
                 <div class="media-embed audio-embed">
-                    <div class="media-header">🎵 ${safeFileName}</div>
+                    <div class="media-header">🎵 ${safeFileName} ${downloadButton}</div>
                     <audio controls>
                         <source src="/api/serve-file?path=${encodeURIComponent(filePath)}" type="audio/${getFileExtension(filePath)}">
                         Your browser does not support the audio element.
@@ -706,7 +716,7 @@ function createMediaEmbed(filePath, fileName) {
         case 'video':
             return `
                 <div class="media-embed video-embed">
-                    <div class="media-header">🎬 ${safeFileName}</div>
+                    <div class="media-header">🎬 ${safeFileName} ${downloadButton}</div>
                     <video controls>
                         <source src="/api/serve-file?path=${encodeURIComponent(filePath)}" type="video/${getFileExtension(filePath)}">
                         Your browser does not support the video element.
@@ -716,14 +726,14 @@ function createMediaEmbed(filePath, fileName) {
         case 'image':
             return `
                 <div class="media-embed image-embed">
-                    <div class="media-header">🖼️ ${safeFileName}</div>
+                    <div class="media-header">🖼️ ${safeFileName} ${downloadButton}</div>
                     <img src="/api/serve-file?path=${encodeURIComponent(filePath)}" alt="${safeFileName}" loading="lazy">
                 </div>`;
         
         default:
             return `
                 <div class="media-embed file-embed">
-                    <div class="media-header">📄 ${safeFileName}</div>
+                    <div class="media-header">📄 ${safeFileName} ${downloadButton}</div>
                     <div class="file-info">File type not supported for preview</div>
                 </div>`;
     }
@@ -808,6 +818,20 @@ function setupSettingsChangeTracking() {
             settingsChanged = true;
         });
     });
+}
+
+// Download file function
+function downloadFile(filePath, fileName) {
+    // Create a download link
+    const link = document.createElement('a');
+    link.href = `/api/serve-file?path=${encodeURIComponent(filePath)}`;
+    link.download = fileName;
+    link.style.display = 'none';
+    
+    // Add to DOM, click, and remove
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
 }
 
 // Copy command to clipboard
