@@ -573,6 +573,20 @@ h1 {
     border: 1px solid #b3d9ff;
 }
 
+.output-preview {
+    margin-bottom: 1rem;
+    padding: 0.75rem;
+    background-color: #f0f8f0;
+    border-radius: 6px;
+    border: 1px solid #c3e6c3;
+}
+
+.output-preview strong {
+    color: #2d6e2d;
+    display: block;
+    margin-bottom: 0.75rem;
+}
+
 .output-section strong {
     color: #0056b3;
 }
@@ -713,4 +727,239 @@ h1 {
 
 .tab-content.active {
     display: block;
+}
+
+/* Media Embed Styles */
+.media-embed {
+    margin: 1rem 0;
+    border: 1px solid #e1e4e8;
+    border-radius: 8px;
+    overflow: hidden;
+    background-color: #f8f9fa;
+    max-width: 100%;
+}
+
+.media-header {
+    background-color: #e9ecef;
+    padding: 0.75rem 1rem;
+    font-weight: 600;
+    color: #495057;
+    border-bottom: 1px solid #dee2e6;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.audio-embed audio {
+    width: 100%;
+    max-width: 400px;
+    margin: 1rem;
+    border-radius: 4px;
+}
+
+.video-embed video {
+    width: 100%;
+    max-width: 600px;
+    max-height: 400px;
+    margin: 1rem;
+    border-radius: 4px;
+    background-color: #000;
+}
+
+.image-embed img {
+    max-width: 100%;
+    max-height: 500px;
+    width: auto;
+    height: auto;
+    margin: 1rem;
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    object-fit: contain;
+}
+
+.file-embed {
+    padding: 1rem;
+    text-align: center;
+}
+
+.file-embed .file-info {
+    color: #6c757d;
+    font-style: italic;
+    background-color: transparent;
+    border: none;
+    padding: 0;
+    margin: 0;
+    font-size: 0.9rem;
+}
+
+/* Command buttons container */
+.command-buttons {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+    flex-wrap: wrap;
+}
+
+/* Copy button styles */
+.copy-btn {
+    background-color: #6c757d;
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    transition: all 0.3s ease;
+}
+
+.copy-btn:hover:not(:disabled) {
+    background-color: #5a6268;
+    transform: translateY(-1px);
+}
+
+.copy-btn.copied {
+    background-color: #28a745;
+}
+
+.copy-btn.error {
+    background-color: #dc3545;
+}
+
+/* Execute button styles */
+.execute-btn {
+    background-color: #28a745;
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    transition: all 0.3s ease;
+}
+
+.execute-btn:hover:not(:disabled) {
+    background-color: #218838;
+    transform: translateY(-1px);
+}
+
+.execute-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+.execute-btn.executing {
+    background-color: #ffc107;
+    color: #212529;
+}
+
+.execute-btn.executed {
+    background-color: #6c757d;
+    cursor: default;
+}
+
+.execute-btn.executed:hover {
+    background-color: #6c757d;
+    transform: none;
+}
+
+.execute-btn.error {
+    background-color: #dc3545;
+}
+
+/* Execution result message styles */
+.message.execution-result {
+    background-color: #d4edda;
+    border: 1px solid #c3e6cb;
+    color: #155724;
+    align-self: stretch;
+    max-width: 100%;
+    margin: 0.5rem 0;
+}
+
+.execution-success {
+    padding: 0.75rem;
+    background-color: #d1ecf1;
+    border: 1px solid #bee5eb;
+    border-radius: 6px;
+    margin-bottom: 1rem;
+    color: #0c5460;
+}
+
+.output-result {
+    margin: 1rem 0;
+    padding: 0.75rem;
+    background-color: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+}
+
+.output-result strong {
+    color: #495057;
+    display: block;
+    margin-bottom: 0.75rem;
+}
+
+.ffmpeg-log {
+    margin-top: 1rem;
+    padding: 0.5rem;
+    background-color: #f1f3f4;
+    border-radius: 4px;
+}
+
+.ffmpeg-log summary {
+    cursor: pointer;
+    font-weight: 500;
+    color: #6c757d;
+    padding: 0.25rem;
+}
+
+.ffmpeg-log pre {
+    margin-top: 0.5rem;
+    background-color: #1e1e1e;
+    color: #d4d4d4;
+    padding: 0.75rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+/* Responsive media embeds */
+@media (max-width: 768px) {
+    .video-embed video {
+        max-width: 100%;
+        max-height: 300px;
+    }
+    
+    .audio-embed audio {
+        max-width: 100%;
+    }
+    
+    .image-embed img {
+        max-height: 300px;
+    }
+    
+    .media-embed {
+        margin: 0.5rem 0;
+    }
+    
+    .command-buttons {
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+    
+    .execute-btn,
+    .copy-btn {
+        width: 100%;
+        justify-content: center;
+    }
 }

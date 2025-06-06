@@ -40,12 +40,13 @@
                         <option value="local">Local LLM</option>
                     </select>
                     <label class="raw-messages-toggle">
-                        <input type="checkbox" id="show-raw-messages-main" checked>
+                        <input type="checkbox" id="show-raw-messages-main">
                         Raw JSON
                     </label>
                 </div>
                 <input type="text" id="message-input" class="message-input" placeholder='e.g. "convert to grayscale", "extract audio"' />
                 <button id="send-btn" class="send-btn">Send</button>
+                <button id="cancel-btn" class="cancel-btn" style="display: none;">Cancel Execution</button>
             </div>
         </div>
     </div>
@@ -60,7 +61,6 @@
             <div class="tab-navigation">
                 <button class="tab-button active" data-tab="backend">Backend</button>
                 <button class="tab-button" data-tab="ffmpeg">FFmpeg</button>
-                <button class="tab-button" data-tab="prompt">Prompt</button>
             </div>
             
             <!-- Backend Tab -->
@@ -123,20 +123,6 @@
                 </div>
             </div>
 
-            <!-- Prompt Tab -->
-            <div id="prompt-tab" class="tab-content">
-                <div class="settings-section">
-                    <h3>System Prompt</h3>
-                    <textarea id="system-prompt" placeholder="System prompt for structured JSON mode" class="api-input system-prompt-input"></textarea>
-                </div>
-
-                <div class="settings-section">
-                    <h3>JSON Template</h3>
-                    <textarea id="json-template" placeholder="JSON template for structured requests" class="api-input json-template-input"></textarea>
-                    <div class="env-hint">Template for formatting user requests. Use {INPUT_FILE}, {OUTPUT_FILE}, and {USER_INPUT} as placeholders.</div>
-                </div>
-
-            </div>
 
             <button id="save-settings" class="save-btn">Save Settings</button>
         </div>

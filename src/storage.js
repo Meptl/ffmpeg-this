@@ -32,27 +32,29 @@ The user will ask you a series of operations to perform.
 
 These will be in this exact JSON format:
 {
-  "input_file": "{INPUT_FILE}",
-  "output_file": "{OUTPUT_FILE}", 
+  "input_filename": "example.mp4",
   "operation": "description of what to do"
 }
 
 For every response, you must provide output in this exact JSON format:
 {
   "command": "complete ffmpeg command using {INPUT_FILE} and {OUTPUT_FILE} placeholders",
-  "output_file": "{OUTPUT_FILE}.ext",
+  "output_extension": "ext",
   "error": null | "some issue"
 }
 
 Rules:
 - Use {INPUT_FILE} and {OUTPUT_FILE} as placeholders in your ffmpeg commands
 - Do NOT use actual file paths - only use the placeholder strings
-- CRITICAL: In output_file, you MUST add the appropriate file extension after {OUTPUT_FILE}
+- Always provide output_extension - this field is mandatory
+- Always include the -y flag in your ffmpeg commands to overwrite output files
+- Set output_extension to the appropriate file extension (without the dot)
   Examples:
-  - For MP3 audio: output_file: "{OUTPUT_FILE}.mp3"
-  - For MP4 video: output_file: "{OUTPUT_FILE}.mp4"
-  - For WAV audio: output_file: "{OUTPUT_FILE}.wav"
-  - For GIF: output_file: "{OUTPUT_FILE}.gif"
+  - For MP3 audio: output_extension: "mp3"
+  - For MP4 video: output_extension: "mp4"
+  - For WAV audio: output_extension: "wav"
+  - For GIF: output_extension: "gif"
+  - For PNG image: output_extension: "png"
   - Choose extension based on the output format in your ffmpeg command
 - Generate complete, runnable ffmpeg commands with placeholders
 - For video operations, maintain quality unless asked to compress
@@ -61,8 +63,7 @@ Rules:
 - If the operation is complex, break it into the most essential command
 - If the operation is unclear or impossible, explain in the error field`,
   jsonTemplate: `{
-  "input_file": "{INPUT_FILE}",
-  "output_file": "{OUTPUT_FILE}",
+  "input_filename": "{INPUT_FILENAME}",
   "operation": "{USER_INPUT}"
 }`
 };
@@ -149,7 +150,17 @@ async function set(key, value) {
 
 // Get all settings
 async function getAllSettings() {
-  return loadSettings();
+  const settings = loadSettings();
+  
+  // Use defaults for empty system prompt and json template
+  if (!settings.systemPrompt || settings.systemPrompt.trim() === '') {
+    settings.systemPrompt = defaultSettings.systemPrompt;
+  }
+  if (!settings.jsonTemplate || settings.jsonTemplate.trim() === '') {
+    settings.jsonTemplate = defaultSettings.jsonTemplate;
+  }
+  
+  return settings;
 }
 
 // Set all settings
@@ -160,12 +171,6 @@ async function setAllSettings(newSettings) {
   // Only update provided fields
   if (newSettings.ffmpegPath !== undefined) {
     merged.ffmpegPath = newSettings.ffmpegPath;
-  }
-  if (newSettings.systemPrompt !== undefined) {
-    merged.systemPrompt = newSettings.systemPrompt;
-  }
-  if (newSettings.jsonTemplate !== undefined) {
-    merged.jsonTemplate = newSettings.jsonTemplate;
   }
   
   return saveSettings(merged);

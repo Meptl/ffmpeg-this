@@ -6,7 +6,7 @@ let ffmpegAvailable = false;
 let currentFile = null;
 let systemPrompt = '';
 let jsonTemplate = '';
-let showRawMessages = true; // Flag to show raw messages instead of structured display
+let showRawMessages = false; // Flag to show raw messages instead of structured display
 let messagesData = []; // Store message data for re-rendering
 let settingsChanged = false; // Track if settings have been modified
 
@@ -21,6 +21,7 @@ const closeModal = document.querySelector('.close');
 const saveSettingsBtn = document.getElementById('save-settings');
 const ffmpegStatus = document.getElementById('ffmpeg-status');
 const showRawMessagesToggle = document.getElementById('show-raw-messages-main');
+const cancelBtn = document.getElementById('cancel-btn');
 
 // File upload elements
 const fileInput = document.getElementById('file-input');
@@ -51,11 +52,15 @@ async function initialize() {
     }
 }
 
+// Global variable to track current execution
+let currentExecutionId = null;
+
 // Event listeners
 sendBtn.addEventListener('click', sendMessage);
 messageInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') sendMessage();
 });
+cancelBtn.addEventListener('click', cancelExecution);
 providerSelect.addEventListener('change', (e) => {
     currentProvider = e.target.value;
 });
@@ -201,6 +206,49 @@ function showChatInterface() {
     if (showRawMessages && systemPrompt) {
         showPromptHeaderMessage();
     }
+    
+    // Add initial media embed for the current file
+    if (currentFile) {
+        addInitialFileEmbed();
+    }
+}
+
+// Add initial media embed when chat starts
+function addInitialFileEmbed() {
+    if (!currentFile) return;
+    
+    // Remove existing file embed if it exists
+    const existingEmbed = document.getElementById('initial-file-embed');
+    if (existingEmbed) {
+        existingEmbed.remove();
+    }
+    
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'message info file-intro';
+    messageDiv.id = 'initial-file-embed';
+    
+    const mediaEmbed = createMediaEmbed(currentFile.filePath, currentFile.originalName);
+    
+    messageDiv.innerHTML = `
+        <div class="message-header">Current Input File</div>
+        <div class="message-content">
+            ${mediaEmbed}
+            <p style="margin-top: 1rem; color: #6c757d; font-size: 0.9rem;">
+                Ready to process <strong>${currentFile.originalName}</strong>. 
+                Describe what you'd like to do with this file.
+            </p>
+        </div>
+    `;
+    
+    // Insert at the beginning of messages (after prompt header if it exists)
+    const promptHeader = document.getElementById('prompt-header-message');
+    if (promptHeader) {
+        messagesDiv.insertBefore(messageDiv, promptHeader.nextSibling);
+    } else {
+        messagesDiv.insertBefore(messageDiv, messagesDiv.firstChild);
+    }
+    
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
 }
 
 // Check ffmpeg status
@@ -335,8 +383,8 @@ async function sendMessage() {
                 // Always use structured message when we have parsed data
                 addStructuredMessage('assistant', data.response, data.parsedResponse, data.executableResponse);
             } else {
-                // Fallback to regular message
-                addMessage('assistant', data.response);
+                // Fallback to regular message with parsing warning
+                addMessage('assistant', data.response, false, true); // Add parsing warning flag
             }
             conversationHistory.push({ role: 'assistant', content: data.response });
         } else {
@@ -349,13 +397,13 @@ async function sendMessage() {
 }
 
 // Add message to UI and store data
-function addMessage(type, content, isLoading = false) {
+function addMessage(type, content, isLoading = false, hasParsingWarning = false) {
     // Don't store loading messages
     if (!isLoading && type !== 'loading') {
         storeMessageData(type, content);
     }
     
-    return addMessageToUI(type, content, isLoading);
+    return addMessageToUI(type, content, isLoading, hasParsingWarning);
 }
 
 // Store message data for re-rendering
@@ -387,6 +435,11 @@ function reRenderAllMessages() {
     // Show prompt header if raw mode is enabled and we have messages
     if (showRawMessages && systemPrompt && messagesData.length > 0) {
         showPromptHeaderMessage();
+    }
+    
+    // Re-add initial file embed if we have a current file
+    if (currentFile) {
+        addInitialFileEmbed();
     }
     
     messagesData.forEach((msgData, index) => {
@@ -438,7 +491,7 @@ function hidePromptHeaderMessage() {
 }
 
 // Add message to UI only (without storing data)
-function addMessageToUI(type, content, isLoading = false) {
+function addMessageToUI(type, content, isLoading = false, hasParsingWarning = false) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${type}`;
     if (isLoading) messageDiv.classList.add('loading');
@@ -451,8 +504,11 @@ function addMessageToUI(type, content, isLoading = false) {
     const headerText = type === 'user' ? 'You' : 
                       type === 'assistant' ? currentProvider : 
                       type === 'info' ? 'Info' : 'System';
+    
+    const warningIcon = hasParsingWarning ? ' ⚠️' : '';
+    
     messageDiv.innerHTML = `
-        <div class="message-header">${headerText}</div>
+        <div class="message-header">${headerText}${warningIcon}</div>
         <div class="message-content">${formattedContent}</div>
     `;
     
@@ -472,6 +528,13 @@ function removeMessage(id) {
 function addStructuredMessage(type, rawContent, parsedResponse, executableResponse = null) {
     // Store with parsed response data
     storeMessageData(type, rawContent, parsedResponse, executableResponse);
+    
+    console.log('addStructuredMessage called:', {
+        type: type,
+        showRawMessages: showRawMessages,
+        hasParsedResponse: !!parsedResponse,
+        hasExecutableResponse: !!executableResponse
+    });
     
     if (showRawMessages) {
         return addMessageToUI(type, rawContent);
@@ -503,20 +566,50 @@ function addStructuredMessageToUI(type, rawContent, parsedResponse, executableRe
     } else {
         // Use executable command with real paths if available, otherwise use parsed response
         const commandToShow = executableResponse ? executableResponse.command : parsedResponse.command;
-        const outputFileToShow = executableResponse ? executableResponse.output_file : parsedResponse.output_file;
+        const outputFileToShow = executableResponse ? executableResponse.output_file : null;
+        const outputExtension = parsedResponse.output_extension;
         
         structuredHTML += `
             <div class="message-content structured-content">
                 <div class="command-section">
                     <strong>FFmpeg Command (ready to run):</strong>
                     <pre><code>${commandToShow}</code></pre>
+                    <div class="command-buttons">
+                        <button class="copy-btn" data-command="${commandToShow.replace(/"/g, '&quot;')}" onclick="copyToClipboard(this.getAttribute('data-command'), this)">
+                            📋 Copy Command
+                        </button>
+                        <button class="execute-btn" data-command="${commandToShow.replace(/"/g, '&quot;')}" data-output="${executableResponse ? executableResponse.output_file.replace(/"/g, '&quot;') : ''}" data-msgid="${id}" onclick="executeFFmpegCommand(this.getAttribute('data-command'), this.getAttribute('data-output'), this.getAttribute('data-msgid'))">
+                            ▶️ Execute Command
+                        </button>
+                    </div>
                 </div>`;
+        
+        if (outputExtension) {
+            structuredHTML += `
+                <div class="output-section">
+                    <strong>Output Format:</strong> <code>.${outputExtension}</code>
+                </div>`;
+        }
         
         if (outputFileToShow) {
             structuredHTML += `
                 <div class="output-section">
                     <strong>Output File:</strong> <code>${outputFileToShow}</code>
                 </div>`;
+            
+            // Add media embed for output file if it exists and is a media file
+            if (executableResponse && executableResponse.output_file) {
+                const mediaType = getMediaType(executableResponse.output_file);
+                if (mediaType !== 'unknown') {
+                    const fileName = executableResponse.output_file.split('/').pop();
+                    const mediaEmbed = createMediaEmbed(executableResponse.output_file, fileName);
+                    structuredHTML += `
+                        <div class="output-preview">
+                            <strong>Output Preview:</strong>
+                            ${mediaEmbed}
+                        </div>`;
+                }
+            }
         }
         
         structuredHTML += `
@@ -537,6 +630,76 @@ function addStructuredMessageToUI(type, rawContent, parsedResponse, executableRe
     return id;
 }
 
+
+// Media embedding utilities
+function getFileExtension(filePath) {
+    return filePath.split('.').pop().toLowerCase();
+}
+
+function getMediaType(filePath) {
+    const ext = getFileExtension(filePath);
+    
+    // Audio formats
+    if (['mp3', 'wav', 'ogg', 'aac', 'flac', 'm4a', 'wma'].includes(ext)) {
+        return 'audio';
+    }
+    
+    // Video formats
+    if (['mp4', 'webm', 'ogg', 'avi', 'mov', 'wmv', 'flv', 'mkv', 'm4v'].includes(ext)) {
+        return 'video';
+    }
+    
+    // Image formats
+    if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'].includes(ext)) {
+        return 'image';
+    }
+    
+    return 'unknown';
+}
+
+function createMediaEmbed(filePath, fileName) {
+    const mediaType = getMediaType(filePath);
+    const safeFileName = fileName.replace(/[<>&"']/g, function(match) {
+        const htmlEntities = { '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' };
+        return htmlEntities[match];
+    });
+    
+    switch (mediaType) {
+        case 'audio':
+            return `
+                <div class="media-embed audio-embed">
+                    <div class="media-header">🎵 ${safeFileName}</div>
+                    <audio controls>
+                        <source src="/api/serve-file?path=${encodeURIComponent(filePath)}" type="audio/${getFileExtension(filePath)}">
+                        Your browser does not support the audio element.
+                    </audio>
+                </div>`;
+        
+        case 'video':
+            return `
+                <div class="media-embed video-embed">
+                    <div class="media-header">🎬 ${safeFileName}</div>
+                    <video controls>
+                        <source src="/api/serve-file?path=${encodeURIComponent(filePath)}" type="video/${getFileExtension(filePath)}">
+                        Your browser does not support the video element.
+                    </video>
+                </div>`;
+        
+        case 'image':
+            return `
+                <div class="media-embed image-embed">
+                    <div class="media-header">🖼️ ${safeFileName}</div>
+                    <img src="/api/serve-file?path=${encodeURIComponent(filePath)}" alt="${safeFileName}" loading="lazy">
+                </div>`;
+        
+        default:
+            return `
+                <div class="media-embed file-embed">
+                    <div class="media-header">📄 ${safeFileName}</div>
+                    <div class="file-info">File type not supported for preview</div>
+                </div>`;
+    }
+}
 
 // Format message content
 function formatMessageContent(content) {
@@ -587,19 +750,11 @@ async function loadCurrentSettings() {
         }
         
         
-        const systemPromptInput = document.getElementById('system-prompt');
-        if (systemPromptInput) {
-            systemPromptInput.value = persistentSettings.systemPrompt || '';
-        }
-        
-        const jsonTemplateInput = document.getElementById('json-template');
-        if (jsonTemplateInput) {
-            jsonTemplateInput.value = persistentSettings.jsonTemplate || '';
-        }
     } catch (error) {
         console.error('Error loading settings:', error);
     }
 }
+
 
 // Close settings modal with optional change check
 function closeSettingsModal() {
@@ -625,6 +780,226 @@ function setupSettingsChangeTracking() {
             settingsChanged = true;
         });
     });
+}
+
+// Copy command to clipboard
+async function copyToClipboard(command, buttonElement) {
+    try {
+        await navigator.clipboard.writeText(command);
+        
+        // Update button to show success
+        const originalText = buttonElement.innerHTML;
+        buttonElement.innerHTML = '✅ Copied!';
+        buttonElement.classList.add('copied');
+        
+        // Reset button after 2 seconds
+        setTimeout(() => {
+            buttonElement.innerHTML = originalText;
+            buttonElement.classList.remove('copied');
+        }, 2000);
+        
+    } catch (error) {
+        console.error('Failed to copy to clipboard:', error);
+        
+        // Fallback: create a temporary textarea
+        const textarea = document.createElement('textarea');
+        textarea.value = command;
+        document.body.appendChild(textarea);
+        textarea.select();
+        
+        try {
+            document.execCommand('copy');
+            
+            // Update button to show success
+            const originalText = buttonElement.innerHTML;
+            buttonElement.innerHTML = '✅ Copied!';
+            buttonElement.classList.add('copied');
+            
+            setTimeout(() => {
+                buttonElement.innerHTML = originalText;
+                buttonElement.classList.remove('copied');
+            }, 2000);
+            
+        } catch (fallbackError) {
+            console.error('Fallback copy also failed:', fallbackError);
+            
+            // Show error state
+            const originalText = buttonElement.innerHTML;
+            buttonElement.innerHTML = '❌ Copy Failed';
+            buttonElement.classList.add('error');
+            
+            setTimeout(() => {
+                buttonElement.innerHTML = originalText;
+                buttonElement.classList.remove('error');
+            }, 2000);
+        }
+        
+        document.body.removeChild(textarea);
+    }
+}
+
+// Execute FFmpeg command
+async function executeFFmpegCommand(command, outputFile, messageId) {
+    // Escape dots in the messageId for valid CSS selector
+    const escapedId = messageId.toString().replace(/\./g, '\\.');
+    const executeBtn = document.querySelector(`#msg-${escapedId} .execute-btn`);
+    
+    if (!executeBtn) return;
+    
+    // Disable button and show loading state
+    executeBtn.disabled = true;
+    executeBtn.innerHTML = '⏳ Executing...';
+    executeBtn.classList.add('executing');
+    
+    // Set current execution and show cancel button
+    currentExecutionId = messageId;
+    cancelBtn.style.display = 'inline-block';
+    
+    try {
+        const response = await fetch('/api/execute-ffmpeg', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                command: command,
+                outputFile: outputFile,
+                executionId: messageId
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Update button to show success
+            executeBtn.innerHTML = '✅ Executed Successfully';
+            executeBtn.classList.remove('executing');
+            executeBtn.classList.add('executed');
+            
+            // Add execution result message
+            addExecutionResultMessage(result, messageId);
+            
+            // If there's an output file, update the current file for chaining
+            if (result.outputFile) {
+                // Update current file info for next operations
+                const fileName = result.outputFile.split('/').pop();
+                currentFile = {
+                    originalName: fileName,
+                    fileName: fileName,
+                    filePath: result.outputFile,
+                    path: result.outputFile,
+                    size: result.outputSize || 0,
+                    mimetype: 'application/octet-stream'
+                };
+                
+                console.log('Updated current file for chaining:', currentFile.originalName);
+            }
+            
+        } else {
+            // Show error
+            executeBtn.innerHTML = '❌ Execution Failed';
+            executeBtn.classList.remove('executing');
+            executeBtn.classList.add('error');
+            
+            // Add error message
+            addMessage('error', `FFmpeg execution failed: ${result.error}`);
+        }
+        
+    } catch (error) {
+        console.error('Error executing FFmpeg:', error);
+        executeBtn.innerHTML = '❌ Execution Failed';
+        executeBtn.classList.remove('executing');
+        executeBtn.classList.add('error');
+        
+        addMessage('error', `Error executing FFmpeg: ${error.message}`);
+    } finally {
+        // Clear current execution and hide cancel button
+        if (currentExecutionId === messageId) {
+            currentExecutionId = null;
+            cancelBtn.style.display = 'none';
+        }
+    }
+}
+
+// Cancel execution function
+async function cancelExecution() {
+    if (!currentExecutionId) return;
+    
+    try {
+        const response = await fetch('/api/cancel-ffmpeg', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                executionId: currentExecutionId
+            })
+        });
+        
+        if (response.ok) {
+            addMessage('info', '🚫 FFmpeg execution cancelled');
+        }
+    } catch (error) {
+        console.error('Error cancelling execution:', error);
+        addMessage('error', `Error cancelling execution: ${error.message}`);
+    }
+    
+    // Clear execution state
+    currentExecutionId = null;
+    cancelBtn.style.display = 'none';
+}
+
+// Add execution result message
+function addExecutionResultMessage(result, parentMessageId) {
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'message system execution-result';
+    
+    const id = Date.now() + Math.random();
+    messageDiv.id = `msg-${id}`;
+    
+    let resultHTML = `
+        <div class="message-header">Execution Result</div>
+        <div class="message-content">
+            <div class="execution-success">
+                <strong>✅ ${result.message}</strong>
+            </div>`;
+    
+    if (result.outputFile) {
+        const fileName = result.outputFile.split('/').pop();
+        const mediaEmbed = createMediaEmbed(result.outputFile, fileName);
+        
+        resultHTML += `
+            <div class="output-result">
+                <strong>Generated Output:</strong>
+                ${mediaEmbed}
+                <p style="margin-top: 0.5rem; font-size: 0.9rem; color: #6c757d;">
+                    This output is now ready as input for your next command.
+                </p>
+            </div>`;
+    }
+    
+    if (result.stderr && result.stderr.trim()) {
+        resultHTML += `
+            <div class="ffmpeg-log">
+                <details>
+                    <summary>FFmpeg Log</summary>
+                    <pre><code>${result.stderr}</code></pre>
+                </details>
+            </div>`;
+    }
+    
+    resultHTML += '</div>';
+    messageDiv.innerHTML = resultHTML;
+    
+    // Insert after the parent message
+    // Escape dots in the parentMessageId for valid selector
+    const escapedParentId = parentMessageId.toString().replace(/\./g, '\\.');
+    const parentMessage = document.getElementById(`msg-${escapedParentId}`);
+    if (parentMessage && parentMessage.nextSibling) {
+        messagesDiv.insertBefore(messageDiv, parentMessage.nextSibling);
+    } else {
+        messagesDiv.appendChild(messageDiv);
+    }
+    
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    
+    return id;
 }
 
 // Save settings
@@ -675,24 +1050,16 @@ async function saveSettings(suppressAlert = false) {
         });
     }
     
-    // Save persistent settings (ffmpeg path and prompt settings)
+    // Save persistent settings (ffmpeg path only)
     const ffmpegPath = document.getElementById('ffmpeg-path').value;
-    const newSystemPrompt = document.getElementById('system-prompt')?.value || '';
-    const newJsonTemplate = document.getElementById('json-template')?.value || '';
     
     await fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-            ffmpegPath,
-            systemPrompt: newSystemPrompt,
-            jsonTemplate: newJsonTemplate
+            ffmpegPath
         })
     });
-    
-    // Update global prompt settings
-    systemPrompt = newSystemPrompt;
-    jsonTemplate = newJsonTemplate;
     
     settingsChanged = false; // Reset change tracking after saving
     settingsModal.style.display = 'none';
