@@ -251,10 +251,10 @@ function addInitialFileEmbed() {
     }
     
     const messageDiv = document.createElement('div');
-    messageDiv.className = 'message info file-intro';
+    messageDiv.className = 'message user initial-media';
     messageDiv.id = 'initial-file-embed';
     
-    const mediaEmbed = createCleanMediaEmbed(initialFile.filePath, initialFile.originalName);
+    const mediaEmbed = createMediaEmbed(initialFile.filePath, initialFile.originalName, true);
     
     messageDiv.innerHTML = `
         <div class="message-content">
@@ -404,12 +404,23 @@ async function sendMessage() {
         removeMessage(loadingId);
         
         if (response.ok) {
+            // Try to parse the response as JSON even if not marked as structured
+            let parsedJson = null;
+            try {
+                parsedJson = JSON.parse(data.response);
+            } catch (e) {
+                // Not JSON, that's okay
+            }
+            
             if (data.isStructured && data.parsedResponse) {
                 // Always use structured message when we have parsed data
                 addStructuredMessage('assistant', data.response, data.parsedResponse, data.executableResponse);
+            } else if (parsedJson && (parsedJson.error || parsedJson.command)) {
+                // We have valid JSON with error or command, display it structured
+                addStructuredMessage('assistant', data.response, parsedJson, null);
             } else {
-                // Fallback to regular message with parsing warning
-                addMessage('assistant', data.response, false, true); // Add parsing warning flag
+                // Fallback to regular message without warning
+                addMessage('assistant', data.response, false, false);
             }
             conversationHistory.push({ role: 'assistant', content: data.response });
         } else {
@@ -480,6 +491,20 @@ function reRenderAllMessages() {
             } else {
                 addMessageToUI('user', msgData.content);
             }
+        } else if (msgData.type === 'output-media') {
+            // Re-render output media messages
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message assistant output-media';
+            messageDiv.id = `msg-${Date.now() + Math.random()}`;
+            
+            const mediaEmbed = createMediaEmbed(msgData.outputFilePath, msgData.fileName, true);
+            messageDiv.innerHTML = `
+                <div class="message-content">
+                    ${mediaEmbed}
+                </div>
+            `;
+            
+            messagesDiv.appendChild(messageDiv);
         } else {
             addMessageToUI(msgData.type, msgData.content);
         }
@@ -528,10 +553,8 @@ function addMessageToUI(type, content, isLoading = false, hasParsingWarning = fa
                       type === 'assistant' ? currentProvider : 
                       type === 'info' ? 'Info' : 'System';
     
-    const warningIcon = hasParsingWarning ? ' ⚠️' : '';
-    
     messageDiv.innerHTML = `
-        <div class="message-header">${headerText}${warningIcon}</div>
+        <div class="message-header">${headerText}</div>
         <div class="message-content">${formattedContent}</div>
     `;
     
@@ -574,10 +597,12 @@ function addStructuredMessageToUI(type, rawContent, parsedResponse, executableRe
     let structuredHTML = `<div class="message-header">${headerText}</div>`;
     
     if (parsedResponse.error) {
+        // Escape HTML in error message
+        const escapedError = String(parsedResponse.error).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         structuredHTML += `
             <div class="message-content">
                 <div class="error-section">
-                    <strong>Error:</strong> ${parsedResponse.error}
+                    ${escapedError}
                 </div>
             </div>`;
     } else {
@@ -635,7 +660,7 @@ function getMediaType(filePath) {
     return 'unknown';
 }
 
-function createMediaEmbed(filePath, fileName) {
+function createMediaEmbed(filePath, fileName, isResponseMedia = false) {
     const mediaType = getMediaType(filePath);
     const safeFileName = fileName.replace(/[<>&"']/g, function(match) {
         const htmlEntities = { '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' };
@@ -654,94 +679,79 @@ function createMediaEmbed(filePath, fileName) {
     
     switch (mediaType) {
         case 'audio':
-            return `
-                <div class="media-embed audio-embed">
-                    <div class="media-header">🎵 ${safeFileName} ${downloadButton}</div>
-                    <audio controls>
-                        <source src="/api/serve-file?path=${encodeURIComponent(filePath)}" type="audio/${getFileExtension(filePath)}">
-                        Your browser does not support the audio element.
-                    </audio>
-                </div>`;
+            if (isResponseMedia) {
+                return `
+                    <div class="media-embed audio-embed output-media">
+                        <audio controls>
+                            <source src="/api/serve-file?path=${encodeURIComponent(filePath)}" type="audio/${getFileExtension(filePath)}">
+                            Your browser does not support the audio element.
+                        </audio>
+                        ${downloadButton}
+                    </div>`;
+            } else {
+                return `
+                    <div class="media-embed audio-embed">
+                        <div class="media-header">${downloadButton} 🎵 ${safeFileName}</div>
+                        <audio controls>
+                            <source src="/api/serve-file?path=${encodeURIComponent(filePath)}" type="audio/${getFileExtension(filePath)}">
+                            Your browser does not support the audio element.
+                        </audio>
+                    </div>`;
+            }
         
         case 'video':
-            return `
-                <div class="media-embed video-embed">
-                    <div class="media-header">🎬 ${safeFileName} ${downloadButton}</div>
-                    <video controls>
-                        <source src="/api/serve-file?path=${encodeURIComponent(filePath)}" type="video/${getFileExtension(filePath)}">
-                        Your browser does not support the video element.
-                    </video>
-                </div>`;
+            if (isResponseMedia) {
+                return `
+                    <div class="media-embed video-embed output-media">
+                        <video controls>
+                            <source src="/api/serve-file?path=${encodeURIComponent(filePath)}" type="video/${getFileExtension(filePath)}">
+                            Your browser does not support the video element.
+                        </video>
+                        ${downloadButton}
+                    </div>`;
+            } else {
+                return `
+                    <div class="media-embed video-embed">
+                        <div class="media-header">${downloadButton} 🎬 ${safeFileName}</div>
+                        <video controls>
+                            <source src="/api/serve-file?path=${encodeURIComponent(filePath)}" type="video/${getFileExtension(filePath)}">
+                            Your browser does not support the video element.
+                        </video>
+                    </div>`;
+            }
         
         case 'image':
-            return `
-                <div class="media-embed image-embed">
-                    <div class="media-header">🖼️ ${safeFileName} ${downloadButton}</div>
-                    <img src="/api/serve-file?path=${encodeURIComponent(filePath)}" alt="${safeFileName}" loading="lazy">
-                </div>`;
+            if (isResponseMedia) {
+                return `
+                    <div class="media-embed image-embed output-media">
+                        <img src="/api/serve-file?path=${encodeURIComponent(filePath)}" alt="${safeFileName}" loading="lazy">
+                        ${downloadButton}
+                    </div>`;
+            } else {
+                return `
+                    <div class="media-embed image-embed">
+                        <div class="media-header">${downloadButton} 🖼️ ${safeFileName}</div>
+                        <img src="/api/serve-file?path=${encodeURIComponent(filePath)}" alt="${safeFileName}" loading="lazy">
+                    </div>`;
+            }
         
         default:
-            return `
-                <div class="media-embed file-embed">
-                    <div class="media-header">📄 ${safeFileName} ${downloadButton}</div>
-                    <div class="file-info">File type not supported for preview</div>
-                </div>`;
+            if (isResponseMedia) {
+                return `
+                    <div class="media-embed file-embed output-media">
+                        <div class="file-info">File type not supported for preview</div>
+                        ${downloadButton}
+                    </div>`;
+            } else {
+                return `
+                    <div class="media-embed file-embed">
+                        <div class="media-header">${downloadButton} 📄 ${safeFileName}</div>
+                        <div class="file-info">File type not supported for preview</div>
+                    </div>`;
+            }
     }
 }
 
-function createCleanMediaEmbed(filePath, fileName) {
-    const mediaType = getMediaType(filePath);
-    const safeFileName = fileName.replace(/[<>&"']/g, function(match) {
-        const htmlEntities = { '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' };
-        return htmlEntities[match];
-    });
-    
-    // Download icon SVG - resembles Firefox download icon (downward arrow to tray)
-    const downloadIcon = `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" class="download-icon">
-        <path d="M8 11L3 6h3V1h4v5h3l-5 5z"/>
-        <rect x="1" y="12" width="14" height="2" rx="1"/>
-    </svg>`;
-    
-    const downloadButton = `<button class="download-btn" onclick="downloadFile('${filePath.replace(/'/g, "\\'")}', '${safeFileName.replace(/'/g, "\\'")}')">
-        ${downloadIcon}
-    </button>`;
-    
-    switch (mediaType) {
-        case 'audio':
-            return `
-                <div class="media-embed audio-embed">
-                    <div class="media-header">${downloadButton}</div>
-                    <audio controls>
-                        <source src="/api/serve-file?path=${encodeURIComponent(filePath)}" type="audio/${getFileExtension(filePath)}">
-                        Your browser does not support the audio element.
-                    </audio>
-                </div>`;
-        
-        case 'video':
-            return `
-                <div class="media-embed video-embed">
-                    <div class="media-header">${downloadButton}</div>
-                    <video controls>
-                        <source src="/api/serve-file?path=${encodeURIComponent(filePath)}" type="video/${getFileExtension(filePath)}">
-                        Your browser does not support the video element.
-                    </video>
-                </div>`;
-        
-        case 'image':
-            return `
-                <div class="media-embed image-embed">
-                    <div class="media-header">${downloadButton}</div>
-                    <img src="/api/serve-file?path=${encodeURIComponent(filePath)}" alt="${safeFileName}" loading="lazy">
-                </div>`;
-        
-        default:
-            return `
-                <div class="media-embed file-embed">
-                    <div class="media-header">${downloadButton}</div>
-                    <div class="file-info">File type not supported for preview</div>
-                </div>`;
-    }
-}
 
 // Format message content
 function formatMessageContent(content) {
@@ -1060,13 +1070,22 @@ function addOutputMediaMessage(outputFilePath, afterMessageId) {
     messageDiv.id = `msg-${id}`;
     
     const fileName = outputFilePath.split('/').pop();
-    const mediaEmbed = createMediaEmbed(outputFilePath, fileName);
+    const mediaEmbed = createMediaEmbed(outputFilePath, fileName, true);
     
     messageDiv.innerHTML = `
         <div class="message-content">
             ${mediaEmbed}
         </div>
     `;
+    
+    // Store the output media message in messagesData for re-rendering
+    messagesData.push({
+        type: 'output-media',
+        content: null,
+        outputFilePath: outputFilePath,
+        fileName: fileName,
+        timestamp: Date.now()
+    });
     
     // Insert after the command message
     const escapedId = afterMessageId.toString().replace(/\./g, '\\.');
@@ -1076,6 +1095,9 @@ function addOutputMediaMessage(outputFilePath, afterMessageId) {
     } else {
         messagesDiv.appendChild(messageDiv);
     }
+    
+    // Scroll to bottom after adding media
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
     
     return id;
 }
