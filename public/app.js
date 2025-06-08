@@ -358,9 +358,6 @@ async function sendMessage() {
     const userInput = messageInput.value.trim();
     if (!userInput || !currentFile) return;
     
-    // Always use structured mode, send raw user input
-    const messageToSend = userInput;
-    
     // Build JSON message for display with actual server filename
     const jsonMessage = {
         input_filename: currentFile.fileName, // Use server-generated filename, not originalName
@@ -368,6 +365,9 @@ async function sendMessage() {
         use_placeholders: true
     };
     const formattedJsonMessage = JSON.stringify(jsonMessage, null, 2);
+    
+    // Always use structured mode, send formatted JSON
+    const messageToSend = formattedJsonMessage;
     
     // Store both user input and formatted JSON for re-rendering
     storeUserMessageData(userInput, formattedJsonMessage);
@@ -422,6 +422,9 @@ async function sendMessage() {
                 // Fallback to regular message without warning
                 addMessage('assistant', data.response, false, false);
             }
+            
+            // Add both user and assistant messages to conversation history
+            conversationHistory.push({ role: 'user', content: messageToSend });
             conversationHistory.push({ role: 'assistant', content: data.response });
         } else {
             addMessage('error', `Error: ${data.error}`);

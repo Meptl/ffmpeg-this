@@ -257,9 +257,10 @@ Rules:
 - If the operation is complex, break it into the most essential command
 - If the operation is unclear or impossible, explain in the error field`;
     
-    // Add system prompt as first message if this is the start of conversation
-    if (conversationHistory.length === 0) {
-      conversationHistory.push({ role: 'system', content: systemPrompt });
+    // Ensure system prompt is always the first message
+    const hasSystemPrompt = conversationHistory.length > 0 && conversationHistory[0].role === 'system';
+    if (!hasSystemPrompt) {
+      conversationHistory.unshift({ role: 'system', content: systemPrompt });
     }
     
     const finalMessage = formattedJsonMessage;
