@@ -65,6 +65,19 @@ const fileStatus = document.getElementById('file-status');
 const fileUploadContainer = document.getElementById('file-upload-container');
 const chatInputContainer = document.getElementById('chat-input-container');
 
+// Get provider display name
+function getProviderDisplayName(provider) {
+    const names = {
+        openai: 'OpenAI',
+        anthropic: 'Anthropic',
+        gemini: 'Gemini',
+        groq: 'Groq',
+        deepseek: 'DeepSeek',
+        local: 'Local LLM'
+    };
+    return names[provider] || provider;
+}
+
 // Initialize on load
 initialize();
 
@@ -553,7 +566,7 @@ function addMessageToUI(type, content, isLoading = false, hasParsingWarning = fa
     // Format message content (handle code blocks, etc.)
     const formattedContent = formatMessageContent(content);
     const headerText = type === 'user' ? 'You' : 
-                      type === 'assistant' ? currentProvider : 
+                      type === 'assistant' ? getProviderDisplayName(currentProvider) : 
                       type === 'info' ? 'Info' : 'System';
     
     messageDiv.innerHTML = `
@@ -594,7 +607,7 @@ function addStructuredMessageToUI(type, rawContent, parsedResponse, executableRe
     const id = Date.now() + Math.random();
     messageDiv.id = `msg-${id}`;
     
-    const headerText = type === 'assistant' ? currentProvider : type;
+    const headerText = type === 'assistant' ? getProviderDisplayName(currentProvider) : type;
     
     // Create structured display
     let structuredHTML = `<div class="message-header">${headerText}</div>`;
