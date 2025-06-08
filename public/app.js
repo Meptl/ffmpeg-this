@@ -154,6 +154,43 @@ document.addEventListener('click', (e) => {
 // File upload event listener
 fileInput.addEventListener('change', handleFileUpload);
 
+// Drag and drop event listeners
+const dropZone = document.getElementById('drop-zone');
+
+dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dropZone.classList.add('drag-over');
+});
+
+dropZone.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dropZone.classList.remove('drag-over');
+});
+
+dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dropZone.classList.remove('drag-over');
+    
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+        // Use the first file
+        fileInput.files = files;
+        handleFileUpload();
+    }
+});
+
+// Prevent default drag behavior on the whole document
+document.addEventListener('dragover', (e) => {
+    e.preventDefault();
+});
+
+document.addEventListener('drop', (e) => {
+    e.preventDefault();
+});
+
 // Load configured providers
 async function loadConfiguredProviders() {
     try {
@@ -262,7 +299,7 @@ function addInitialFileEmbed() {
     messageDiv.className = 'message user initial-media';
     messageDiv.id = 'initial-file-embed';
     
-    const mediaEmbed = createMediaEmbed(initialFile.filePath, initialFile.originalName, true);
+    const mediaEmbed = createMediaEmbed(initialFile.filePath, initialFile.originalName, true, true);
     
     messageDiv.innerHTML = `
         <div class="message-content">
@@ -322,9 +359,9 @@ async function handleFileUpload() {
     const file = fileInput.files[0];
     if (!file) return;
     
-    // Show loading status
-    fileStatus.textContent = '📁 Uploading file...';
-    fileStatus.className = 'file-status loading';
+    // Clear any previous status
+    fileStatus.textContent = '';
+    fileStatus.className = 'file-status';
     
     const formData = new FormData();
     formData.append('file', file);
@@ -341,14 +378,11 @@ async function handleFileUpload() {
             currentFile = data.file;
             initialFile = { ...data.file }; // Store initial file separately
             
-            // Show success status
-            fileStatus.textContent = `✅ ${data.file.originalName} uploaded`;
-            fileStatus.className = 'file-status success';
+            // Don't show success status, just switch to chat interface
+            fileStatus.textContent = '';
+            fileStatus.className = 'file-status';
             
-            // Switch to chat interface after a brief delay
-            setTimeout(() => {
-                showChatInterface();
-            }, 500);
+            showChatInterface();
             
         } else {
             fileStatus.textContent = `❌ Error: ${data.error}`;
@@ -629,8 +663,11 @@ function addStructuredMessageToUI(type, rawContent, parsedResponse, executableRe
                             📋 Copy Command
                         </button>
                         <button class="execute-btn" data-command="${commandToShow.replace(/"/g, '&quot;')}" data-output="${executableResponse ? executableResponse.output_file.replace(/"/g, '&quot;') : ''}" data-msgid="${id}" onclick="executeFFmpegCommand(this.getAttribute('data-command'), this.getAttribute('data-output'), this.getAttribute('data-msgid'))">
-                            ▶️ Execute Command
+                            ▶️ Execute
                         </button>
+                        ${!autoExecuteCommands ? `<button class="execute-auto-btn" data-command="${commandToShow.replace(/"/g, '&quot;')}" data-output="${executableResponse ? executableResponse.output_file.replace(/"/g, '&quot;') : ''}" data-msgid="${id}" onclick="executeAndToggleAuto(this.getAttribute('data-command'), this.getAttribute('data-output'), this.getAttribute('data-msgid'))">
+                            ⚡ Execute (don't ask again)
+                        </button>` : ''}
                     </div>
                 </div>
             </div>`;
@@ -682,7 +719,7 @@ function getMediaType(filePath) {
     return 'unknown';
 }
 
-function createMediaEmbed(filePath, fileName, isResponseMedia = false) {
+function createMediaEmbed(filePath, fileName, isResponseMedia = false, hideDownloadButton = false) {
     const mediaType = getMediaType(filePath);
     const safeFileName = fileName.replace(/[<>&"']/g, function(match) {
         const htmlEntities = { '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' };
@@ -695,7 +732,7 @@ function createMediaEmbed(filePath, fileName, isResponseMedia = false) {
         <rect x="1" y="12" width="14" height="2" rx="1"/>
     </svg>`;
     
-    const downloadButton = `<button class="download-btn" onclick="downloadFile('${filePath.replace(/'/g, "\\'")}', '${safeFileName.replace(/'/g, "\\'")}')">
+    const downloadButton = hideDownloadButton ? '' : `<button class="download-btn" onclick="downloadFile('${filePath.replace(/'/g, "\\'")}', '${safeFileName.replace(/'/g, "\\'")}')">
         ${downloadIcon}
     </button>`;
     
@@ -962,6 +999,44 @@ async function copyToClipboard(command, buttonElement) {
         }
         
         document.body.removeChild(textarea);
+    }
+}
+
+// Execute FFmpeg command and toggle auto-execute
+async function executeAndToggleAuto(command, outputFile, messageId) {
+    // Toggle the auto-execute setting
+    autoExecuteCommands = true;
+    
+    // Update the checkbox in settings
+    const autoExecuteCheckbox = document.getElementById('auto-execute-commands');
+    if (autoExecuteCheckbox) {
+        autoExecuteCheckbox.checked = true;
+    }
+    
+    // Save the setting
+    await saveAutoExecuteSetting();
+    
+    // Execute the command
+    await executeFFmpegCommand(command, outputFile, messageId);
+    
+    // Hide all "don't ask again" buttons since auto-execute is now on
+    document.querySelectorAll('.execute-auto-btn').forEach(btn => {
+        btn.style.display = 'none';
+    });
+}
+
+// Save only the auto-execute setting
+async function saveAutoExecuteSetting() {
+    try {
+        await fetch('/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                autoExecuteCommands: autoExecuteCommands
+            })
+        });
+    } catch (error) {
+        console.error('Error saving auto-execute setting:', error);
     }
 }
 
