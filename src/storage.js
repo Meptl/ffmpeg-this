@@ -26,7 +26,8 @@ function getConfigFilePath() {
 
 // Default settings
 const defaultSettings = {
-  ffmpegPath: ''
+  ffmpegPath: '',
+  autoExecuteCommands: true
 };
 
 // Load settings from file
@@ -120,6 +121,9 @@ async function setAllSettings(newSettings) {
   // Only update provided fields
   if (newSettings.ffmpegPath !== undefined) {
     merged.ffmpegPath = newSettings.ffmpegPath;
+  }
+  if (newSettings.autoExecuteCommands !== undefined) {
+    merged.autoExecuteCommands = newSettings.autoExecuteCommands;
   }
   
   return saveSettings(merged);

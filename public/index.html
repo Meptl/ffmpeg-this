@@ -39,10 +39,6 @@
                         <option value="deepseek">DeepSeek</option>
                         <option value="local">Local LLM</option>
                     </select>
-                    <label class="raw-messages-toggle">
-                        <input type="checkbox" id="show-raw-messages-main">
-                        Raw JSON
-                    </label>
                 </div>
                 <input type="text" id="message-input" class="message-input" placeholder='e.g. "convert to grayscale", "extract audio"' />
                 <button id="send-btn" class="send-btn">Send</button>
@@ -61,6 +57,7 @@
             <div class="tab-navigation">
                 <button class="tab-button active" data-tab="backend">Backend</button>
                 <button class="tab-button" data-tab="ffmpeg">FFmpeg</button>
+                <button class="tab-button" data-tab="system">System</button>
             </div>
             
             <!-- Backend Tab -->
@@ -123,6 +120,21 @@
                 </div>
             </div>
 
+
+            <!-- System Tab -->
+            <div id="system-tab" class="tab-content">
+                <div class="settings-section">
+                    <h3>System Settings</h3>
+                    <label class="settings-checkbox">
+                        <input type="checkbox" id="show-raw-messages">
+                        <span>Show Raw JSON Messages</span>
+                    </label>
+                    <label class="settings-checkbox">
+                        <input type="checkbox" id="auto-execute-commands" checked>
+                        <span>Auto execute commands</span>
+                    </label>
+                </div>
+            </div>
 
             <button id="save-settings" class="save-btn">Save Settings</button>
         </div>

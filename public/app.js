@@ -42,7 +42,8 @@ Rules:
 - The system will handle file path substitution automatically
 - If the operation is complex, break it into the most essential command
 - If the operation is unclear or impossible, explain in the error field`;
-let showRawMessages = false; // Flag to show raw messages instead of structured display
+let showRawMessages = false; // Flag to show raw messages instead of structured display - defaults to false
+let autoExecuteCommands = true; // Flag to auto-execute FFmpeg commands - defaults to true
 let messagesData = []; // Store message data for re-rendering
 let settingsChanged = false; // Track if settings have been modified
 
@@ -56,7 +57,7 @@ const settingsModal = document.getElementById('settings-modal');
 const closeModal = document.querySelector('.close');
 const saveSettingsBtn = document.getElementById('save-settings');
 const ffmpegStatus = document.getElementById('ffmpeg-status');
-const showRawMessagesToggle = document.getElementById('show-raw-messages-main');
+// Remove reference to main UI toggle since it's been moved to settings
 const cancelBtn = document.getElementById('cancel-btn');
 
 // File upload elements
@@ -82,11 +83,16 @@ function getProviderDisplayName(provider) {
 initialize();
 
 async function initialize() {
-    await loadPersistentSettings();
+    const settings = await loadPersistentSettings();
+    
+    // Load autoExecute setting
+    if (settings && settings.autoExecuteCommands !== undefined) {
+        autoExecuteCommands = settings.autoExecuteCommands;
+    }
+    
     setupSettingsChangeTracking(); // Setup change tracking after DOM is loaded
     
-    // Sync showRawMessages with checkbox state on page load
-    showRawMessages = showRawMessagesToggle.checked;
+    // showRawMessages defaults to false, no need to sync with checkbox
     
     const ffmpegOk = await checkFFmpegStatus();
     if (ffmpegOk) {
@@ -128,17 +134,7 @@ window.addEventListener('click', (e) => {
     }
 });
 saveSettingsBtn.addEventListener('click', saveSettings);
-showRawMessagesToggle.addEventListener('change', (e) => {
-    showRawMessages = e.target.checked;
-    reRenderAllMessages();
-    
-    // Show prompt header when raw JSON is enabled
-    if (showRawMessages && systemPrompt) {
-        showPromptHeaderMessage();
-    } else {
-        hidePromptHeaderMessage();
-    }
-});
+// Event listener moved to settings modal
 
 // Tab switching functionality
 document.addEventListener('click', (e) => {
@@ -234,8 +230,7 @@ function showChatInterface() {
     fileUploadContainer.style.display = 'none';
     chatInputContainer.style.display = 'flex';
     
-    // Ensure showRawMessages is synced with checkbox state
-    showRawMessages = showRawMessagesToggle.checked;
+    // showRawMessages defaults to false
     
     // Re-render any existing messages to respect the current toggle state
     if (messagesData.length > 0) {
@@ -646,6 +641,17 @@ function addStructuredMessageToUI(type, rawContent, parsedResponse, executableRe
     messagesDiv.appendChild(messageDiv);
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
     
+    // Auto-execute if enabled and there's no error
+    if (autoExecuteCommands && !parsedResponse.error && executableResponse) {
+        // Small delay to allow the UI to render first
+        setTimeout(() => {
+            const executeBtn = messageDiv.querySelector('.execute-btn');
+            if (executeBtn) {
+                executeBtn.click();
+            }
+        }, 100);
+    }
+    
     return id;
 }
 
@@ -817,6 +823,17 @@ async function loadCurrentSettings() {
             ffmpegPathInput.value = persistentSettings.ffmpegPath || '';
         }
         
+        // Update system settings checkboxes
+        const showRawMessagesCheckbox = document.getElementById('show-raw-messages');
+        if (showRawMessagesCheckbox) {
+            showRawMessagesCheckbox.checked = showRawMessages;
+        }
+        
+        const autoExecuteCheckbox = document.getElementById('auto-execute-commands');
+        if (autoExecuteCheckbox) {
+            autoExecuteCheckbox.checked = autoExecuteCommands;
+        }
+        
         
     } catch (error) {
         console.error('Error loading settings:', error);
@@ -838,9 +855,12 @@ function closeSettingsModal() {
 
 // Track changes in settings inputs
 function setupSettingsChangeTracking() {
-    // Track all input changes in the settings modal
+    // Track all input changes in the settings modal except for the raw messages checkbox
     const settingsInputs = settingsModal.querySelectorAll('input, textarea, select');
     settingsInputs.forEach(input => {
+        // Skip the raw messages checkbox from change tracking
+        if (input.id === 'show-raw-messages') return;
+        
         input.addEventListener('change', () => {
             settingsChanged = true;
         });
@@ -848,6 +868,31 @@ function setupSettingsChangeTracking() {
             settingsChanged = true;
         });
     });
+    
+    // Add event listener for show raw messages checkbox (separate from change tracking)
+    const showRawMessagesCheckbox = document.getElementById('show-raw-messages');
+    if (showRawMessagesCheckbox) {
+        showRawMessagesCheckbox.addEventListener('change', (e) => {
+            showRawMessages = e.target.checked;
+            reRenderAllMessages();
+            
+            // Show prompt header when raw JSON is enabled
+            if (showRawMessages && systemPrompt) {
+                showPromptHeaderMessage();
+            } else {
+                hidePromptHeaderMessage();
+            }
+        });
+    }
+    
+    // Add event listener for auto execute checkbox
+    const autoExecuteCheckbox = document.getElementById('auto-execute-commands');
+    if (autoExecuteCheckbox) {
+        autoExecuteCheckbox.addEventListener('change', (e) => {
+            autoExecuteCommands = e.target.checked;
+            // This is a persistent setting, so don't override settingsChanged
+        });
+    }
 }
 
 // Download file function
@@ -1166,14 +1211,16 @@ async function saveSettings(suppressAlert = false) {
         });
     }
     
-    // Save persistent settings (ffmpeg path only)
+    // Save persistent settings (ffmpeg path and autoExecute)
     const ffmpegPath = document.getElementById('ffmpeg-path').value;
+    const autoExecute = document.getElementById('auto-execute-commands').checked;
     
     await fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-            ffmpegPath
+            ffmpegPath,
+            autoExecuteCommands: autoExecute
         })
     });
     
