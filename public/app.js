@@ -1,58 +1,12 @@
 // Global state
-let conversationHistory = [];
+let messageManager = null; // Will be initialized after DOM loads
 let currentProvider = '';
 let configuredProviders = [];
 let ffmpegAvailable = false;
 let currentFile = null;
 let initialFile = null;
-// Hardcoded prompts (moved from backend)
-const systemPrompt = `You are an FFmpeg command generator.
-The user will ask you a series of operations to perform.
-
-These will be in this exact JSON format:
-{
-  "input_filename": "example.mp4",
-  "operation": "description of what to do",
-  "use_placeholders": true,
-  "region": null | "x,y widthxheight"
-}
-
-The region field (when not null) specifies a region of interest where:
-- x,y is the top-left corner offset in pixels
-- widthxheight is the size of the region in pixels
-- Example: "100,200 1280x720" means offset (100,200) with size 1280x720
-- This is simply a region the user is referencing - only perform actions on it if explicitly requested
-
-For every response, you must provide output in this exact JSON format:
-{
-  "command": "complete ffmpeg command using {INPUT_FILE} and {OUTPUT_FILE} placeholders",
-  "output_extension": "ext",
-  "error": null | "some issue"
-}
-
-Rules:
-- When use_placeholders is true (which it always will be), you MUST use {INPUT_FILE} and {OUTPUT_FILE} as placeholders in your ffmpeg commands
-- Do NOT use actual file paths - only use the placeholder strings {INPUT_FILE} and {OUTPUT_FILE}
-- Always provide output_extension - this field is mandatory
-- Always include the -y flag in your ffmpeg commands to overwrite output files
-- When a region is specified, it indicates an area of interest - only use it if the user explicitly asks for operations on that region
-- Set output_extension to the appropriate file extension (without the dot)
-  Examples:
-  - For MP3 audio: output_extension: "mp3"
-  - For MP4 video: output_extension: "mp4"
-  - For WAV audio: output_extension: "wav"
-  - For GIF: output_extension: "gif"
-  - For PNG image: output_extension: "png"
-  - Choose extension based on the output format in your ffmpeg command
-- Generate complete, runnable ffmpeg commands with placeholders
-- For video operations, maintain quality unless asked to compress
-- For audio extraction, use appropriate codec (mp3, wav, etc.)
-- The system will handle file path substitution automatically
-- If the operation is complex, break it into the most essential command
-- If the operation is unclear or impossible, explain in the error field`;
 let showRawMessages = false; // Flag to show raw messages instead of structured display - defaults to false
 let autoExecuteCommands = true; // Flag to auto-execute FFmpeg commands - defaults to true
-let messagesData = []; // Store message data for re-rendering
 let settingsChanged = false; // Track if settings have been modified
 
 // Region selection state
@@ -98,6 +52,9 @@ function getProviderDisplayName(provider) {
 initialize();
 
 async function initialize() {
+    // Initialize message manager
+    messageManager = new MessageManager();
+    
     const settings = await loadPersistentSettings();
     
     // Load autoExecute setting
@@ -108,6 +65,7 @@ async function initialize() {
     // Load showRawMessages setting
     if (settings && settings.showRawMessages !== undefined) {
         showRawMessages = settings.showRawMessages;
+        messageManager.setDisplayMode(showRawMessages);
         // Also set the checkbox if it exists
         const showRawMessagesCheckbox = document.getElementById('show-raw-messages');
         if (showRawMessagesCheckbox) {
@@ -290,23 +248,21 @@ function showChatInterface() {
     fileUploadContainer.style.display = 'none';
     chatInputContainer.style.display = 'flex';
     
-    // showRawMessages defaults to false
-    
-    // Add initial file to messages data if not already there
-    if (initialFile && !messagesData.some(msg => msg.type === 'initial-file')) {
-        messagesData.push({
-            type: 'initial-file',
-            file: initialFile,
-            timestamp: Date.now()
-        });
+    // Add initial file to message manager if not already there
+    if (initialFile) {
+        const messages = messageManager.getMessages();
+        if (!messages.some(msg => msg.type === 'initial-file')) {
+            messageManager.addInitialFileMessage(initialFile);
+        }
     }
     
     // Re-render any existing messages to respect the current toggle state
-    if (messagesData.length > 0) {
+    const messages = messageManager.getMessages();
+    if (messages.length > 0) {
         reRenderAllMessages();
     } else {
         // Show prompt header if raw mode is enabled and we have a system prompt
-        if (showRawMessages && systemPrompt) {
+        if (showRawMessages && messageManager.getSystemPrompt()) {
             showPromptHeaderMessage();
         }
     }
@@ -471,19 +427,14 @@ async function sendMessage() {
     }
     
     // Build JSON message for display with actual server filename
-    const jsonMessage = {
-        input_filename: currentFile.fileName, // Use server-generated filename, not originalName
-        operation: userInput,
-        use_placeholders: true,
-        region: regionString
-    };
+    const jsonMessage = MessageFormatter.formatUserMessage(userInput, currentFile, regionString);
     const formattedJsonMessage = JSON.stringify(jsonMessage, null, 2);
     
     // Always use structured mode, send formatted JSON
     const messageToSend = formattedJsonMessage;
     
-    // Store both user input and formatted JSON for re-rendering
-    storeUserMessageData(userInput, formattedJsonMessage);
+    // Store user message in message manager
+    const userMsg = messageManager.addUserMessage(userInput, jsonMessage);
     
     // Add message to UI - show formatted JSON in raw mode, user input in structured mode
     if (showRawMessages) {
@@ -534,7 +485,7 @@ async function sendMessage() {
         const requestBody = {
             provider: currentProvider,
             message: messageToSend,
-            conversationHistory: conversationHistory.slice(-10), // Keep last 10 messages for context
+            conversationHistory: messageManager.getConversationHistory(10), // Keep last 10 messages for context
             useStructuredMode: true,
             userInput: userInput,
             // Send pre-calculated region string for consistency
@@ -572,9 +523,6 @@ async function sendMessage() {
                 addMessage('assistant', data.response, false, false);
             }
             
-            // Add both user and assistant messages to conversation history
-            conversationHistory.push({ role: 'user', content: messageToSend });
-            conversationHistory.push({ role: 'assistant', content: data.response });
         } else {
             addMessage('error', `Error: ${data.error}`);
         }
@@ -586,71 +534,50 @@ async function sendMessage() {
 
 // Add message to UI and store data
 function addMessage(type, content, isLoading = false, hasParsingWarning = false) {
-    // Don't store loading messages
+    // Store in message manager if not loading
     if (!isLoading && type !== 'loading') {
-        storeMessageData(type, content);
+        messageManager.addSystemMessage(type, content);
     }
     
     return addMessageToUI(type, content, isLoading, hasParsingWarning);
 }
 
-// Store message data for re-rendering
-function storeMessageData(type, content, parsedResponse = null, executableResponse = null) {
-    messagesData.push({
-        type,
-        content,
-        parsedResponse,
-        executableResponse,
-        timestamp: Date.now()
-    });
-}
-
-// Store user message data with both formats
-function storeUserMessageData(userInput, formattedJson) {
-    messagesData.push({
-        type: 'user',
-        content: userInput,
-        formattedJson: formattedJson,
-        timestamp: Date.now()
-    });
-}
 
 // Re-render all messages based on current showRawMessages setting
 function reRenderAllMessages() {
     messagesDiv.innerHTML = '';
     
+    const messages = messageManager.getMessages();
+    
     // Show prompt header if raw mode is enabled and we have messages
-    if (showRawMessages && systemPrompt && messagesData.length > 0) {
+    if (showRawMessages && messageManager.getSystemPrompt() && messages.length > 0) {
         showPromptHeaderMessage();
     }
     
-    // The initial file embed is added once in showChatInterface
-    // We don't re-add it here during re-renders
-    
-    messagesData.forEach((msgData, index) => {
+    messages.forEach((msgData) => {
         if (msgData.type === 'initial-file') {
             // Re-render initial file embed
             addInitialFileEmbed();
         } else if (msgData.type === 'assistant' && msgData.parsedResponse) {
             if (showRawMessages) {
-                addMessageToUI('assistant', msgData.content);
+                addMessageToUI('assistant', msgData.content || msgData.rawView);
             } else {
-                addStructuredMessageToUI('assistant', msgData.content, msgData.parsedResponse, msgData.executableResponse);
+                addStructuredMessageToUI('assistant', msgData.content || msgData.rawView, msgData.parsedResponse, msgData.executableResponse || msgData.executableData);
             }
-        } else if (msgData.type === 'user' && msgData.formattedJson) {
+        } else if (msgData.type === 'user') {
             // User message with both formats available
             if (showRawMessages) {
-                addMessageToUI('user', msgData.formattedJson);
+                addMessageToUI('user', msgData.formattedJson || msgData.rawView);
             } else {
-                addMessageToUI('user', msgData.content);
+                addMessageToUI('user', msgData.content || msgData.humanView);
             }
         } else if (msgData.type === 'output-media') {
             // Re-render output media messages
             const messageDiv = document.createElement('div');
             messageDiv.className = 'message assistant output-media';
-            messageDiv.id = `msg-${Date.now() + Math.random()}`;
+            messageDiv.id = msgData.id || `msg-${Date.now() + Math.random()}`;
             
-            const mediaEmbed = createMediaEmbed(msgData.outputFilePath, msgData.fileName, true);
+            const mediaEmbed = createMediaEmbed(msgData.outputFilePath || msgData.filePath, msgData.fileName, true);
             messageDiv.innerHTML = `
                 <div class="message-content">
                     ${mediaEmbed}
@@ -659,7 +586,7 @@ function reRenderAllMessages() {
             
             messagesDiv.appendChild(messageDiv);
         } else {
-            addMessageToUI(msgData.type, msgData.content);
+            addMessageToUI(msgData.type, msgData.content || msgData.humanView || msgData.rawView);
         }
     });
 }
@@ -675,7 +602,7 @@ function showPromptHeaderMessage() {
     headerDiv.innerHTML = `
         <div class="message-header">System Prompt</div>
         <div class="message-content">
-            <pre><code>${formatMessageContent(systemPrompt)}</code></pre>
+            <pre><code>${formatMessageContent(messageManager.getSystemPrompt())}</code></pre>
         </div>
     `;
     
@@ -725,9 +652,7 @@ function removeMessage(id) {
 
 // Add structured message to UI and store data
 function addStructuredMessage(type, rawContent, parsedResponse, executableResponse = null) {
-    // Store with parsed response data
-    storeMessageData(type, rawContent, parsedResponse, executableResponse);
-    
+    messageManager.addAssistantMessage(rawContent, parsedResponse, executableResponse);
     
     if (showRawMessages) {
         return addMessageToUI(type, rawContent);
@@ -1034,10 +959,11 @@ function setupSettingsChangeTracking() {
     if (showRawMessagesCheckbox) {
         showRawMessagesCheckbox.addEventListener('change', (e) => {
             showRawMessages = e.target.checked;
+            messageManager.setDisplayMode(showRawMessages);
             reRenderAllMessages();
             
             // Show prompt header when raw JSON is enabled
-            if (showRawMessages && systemPrompt) {
+            if (showRawMessages && messageManager.getSystemPrompt()) {
                 showPromptHeaderMessage();
             } else {
                 hidePromptHeaderMessage();
@@ -1337,14 +1263,7 @@ function addOutputMediaMessage(outputFilePath, afterMessageId) {
         </div>
     `;
     
-    // Store the output media message in messagesData for re-rendering
-    messagesData.push({
-        type: 'output-media',
-        content: null,
-        outputFilePath: outputFilePath,
-        fileName: fileName,
-        timestamp: Date.now()
-    });
+    messageManager.addMediaOutputMessage(outputFilePath, fileName);
     
     // Insert after the command message
     const escapedId = afterMessageId.toString().replace(/\./g, '\\.');
