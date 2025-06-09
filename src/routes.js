@@ -15,11 +15,12 @@ const { getAllSettings, setAllSettings } = require('./storage');
 // Function to detect video rotation metadata
 async function getVideoRotation(filePath, ffprobePath) {
   return new Promise((resolve) => {
+    // Use the simple ffprobe command that shows rotation directly
     const ffprobeProcess = spawn(ffprobePath, [
-      '-v', 'quiet',
+      '-loglevel', 'error',
+      '-show_entries', 'stream=width,height:stream_side_data=displaymatrix',
       '-select_streams', 'v:0',
-      '-show_entries', 'stream_side_data=displaymatrix',
-      '-of', 'csv=p=0',
+      '-of', 'default=nw=1',
       filePath
     ]);
     
@@ -35,48 +36,99 @@ async function getVideoRotation(filePath, ffprobePath) {
     });
     
     ffprobeProcess.on('close', (code) => {
-      if (code === 0 && stdout.includes('rotation')) {
+      console.log('Rotation detection output:', stdout);
+      console.log('Rotation detection stderr:', stderr);
+      
+      if (code === 0 && stdout) {
+        // Look for rotation in the output
         const match = stdout.match(/rotation of (-?\d+(?:\.\d+)?)/);
         if (match) {
           const rotation = parseFloat(match[1]);
+          console.log('Found rotation:', rotation);
           // Normalize to standard rotation values
           if (Math.abs(rotation - 90) < 1) return resolve(90);
-          if (Math.abs(rotation - (-90)) < 1) return resolve(-90);
+          if (Math.abs(rotation + 90) < 1) return resolve(-90);
           if (Math.abs(rotation - 180) < 1) return resolve(180);
-          if (Math.abs(rotation - (-180)) < 1) return resolve(-180);
+          if (Math.abs(rotation + 180) < 1) return resolve(-180);
           return resolve(Math.round(rotation));
         }
       }
       
-      // Also check for rotate tag in metadata
-      const rotateProcess = spawn(ffprobePath, [
+      // Try alternative method with JSON format
+      const jsonProcess = spawn(ffprobePath, [
         '-v', 'quiet',
-        '-select_streams', 'v:0',
-        '-show_entries', 'stream_tags=rotate',
-        '-of', 'csv=p=0',
+        '-print_format', 'json',
+        '-show_format', 
+        '-show_streams',
         filePath
       ]);
       
-      let rotateStdout = '';
+      let jsonStdout = '';
       
-      rotateProcess.stdout.on('data', (data) => {
-        rotateStdout += data.toString();
+      jsonProcess.stdout.on('data', (data) => {
+        jsonStdout += data.toString();
       });
       
-      rotateProcess.on('close', (code) => {
-        if (code === 0 && rotateStdout.trim()) {
-          const rotation = parseInt(rotateStdout.trim());
-          if (!isNaN(rotation)) {
-            return resolve(rotation);
+      jsonProcess.on('close', (code) => {
+        if (code === 0) {
+          try {
+            const data = JSON.parse(jsonStdout);
+            console.log('JSON probe data:', JSON.stringify(data, null, 2));
+            
+            if (data.streams) {
+              for (const stream of data.streams) {
+                if (stream.codec_type === 'video') {
+                  // Check for rotate tag
+                  if (stream.tags && stream.tags.rotate) {
+                    const rotation = parseInt(stream.tags.rotate);
+                    console.log('Found rotate tag:', rotation);
+                    if (!isNaN(rotation)) {
+                      return resolve(rotation);
+                    }
+                  }
+                  
+                  // Check side_data for displaymatrix
+                  if (stream.side_data_list) {
+                    for (const sideData of stream.side_data_list) {
+                      console.log('Side data:', sideData);
+                      if (sideData.side_data_type === 'Display Matrix' || sideData.displaymatrix) {
+                        // Sometimes the rotation is directly in the sideData
+                        if (sideData.rotation !== undefined) {
+                          const rotation = parseFloat(sideData.rotation);
+                          console.log('Found rotation in side_data:', rotation);
+                          if (!isNaN(rotation)) {
+                            if (Math.abs(rotation - 90) < 1) return resolve(90);
+                            if (Math.abs(rotation + 90) < 1) return resolve(-90);
+                            if (Math.abs(rotation - 180) < 1) return resolve(180);
+                            if (Math.abs(rotation + 180) < 1) return resolve(-180);
+                            return resolve(Math.round(rotation));
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          } catch (e) {
+            console.error('Error parsing JSON from ffprobe:', e);
           }
         }
+        
+        console.log('No rotation found, returning 0');
         resolve(0); // No rotation found
       });
       
-      rotateProcess.on('error', () => resolve(0));
+      jsonProcess.on('error', (err) => {
+        console.error('JSON probe error:', err);
+        resolve(0);
+      });
     });
     
-    ffprobeProcess.on('error', () => resolve(0));
+    ffprobeProcess.on('error', (err) => {
+      console.error('First probe error:', err);
+      resolve(0);
+    });
   });
 }
 
@@ -84,30 +136,39 @@ async function getVideoRotation(filePath, ffprobePath) {
 // Maps from display coordinates to stored video frame coordinates
 function transformCropCoordinates(x, y, width, height, videoWidth, videoHeight, rotation) {
   switch(rotation) {
-    case -90: // Video stored as 640x360, displayed as 360x640 (rotated -90°)
-      // User selects on 360x640 display, map to 640x360 stored frame
+    case 90: // 90 degrees clockwise rotation
+      // When video is rotated 90° clockwise:
+      // - Display coordinate system is rotated
+      // - x_new = original_height - y - height
+      // - y_new = x
+      // - width and height are swapped
       return {
-        x: y,                         // display y -> stored x
-        y: videoWidth - (x + width),  // display x -> stored y (from right edge)
-        width: height,                // display height -> stored width
-        height: width                 // display width -> stored height
+        x: videoHeight - y - height,  // source height - display y - display height
+        y: x,                         // display x becomes new y
+        width: height,                // display height becomes new width
+        height: width                 // display width becomes new height
       };
-    case 90: // Video stored rotated +90°
+    case -90: // 90 degrees counter-clockwise rotation
+      // When video is rotated 90° counter-clockwise:
+      // - x_new = y
+      // - y_new = original_width - x - width
+      // - width and height are swapped
       return {
-        x: y,
-        y: videoHeight - (x + width),
-        width: height,
-        height: width
+        x: y,                         // display y becomes new x
+        y: videoHeight - x - width,    // source width - display x - display width
+        width: height,                // display height becomes new width
+        height: width                 // display width becomes new height
       };
     case 180:
     case -180:
+      // 180 degree rotation: coordinates are flipped
       return {
-        x: videoWidth - (x + width),
-        y: videoHeight - (y + height),
+        x: videoWidth - x - width,
+        y: videoHeight - y - height,
         width: width,
         height: height
       };
-    default: // 0 degrees
+    default: // 0 degrees (no rotation)
       return { x, y, width, height };
   }
 }
@@ -758,20 +819,29 @@ router.post('/calculate-region', async (req, res) => {
     
     // Get rotation metadata
     const rotation = await getVideoRotation(filePath, ffprobePath);
+    console.log(`Video rotation detected: ${rotation} degrees`);
     
     // Calculate display dimensions considering rotation
     let displayWidth, displayHeight;
     if (rotation === 90 || rotation === -90) {
       displayWidth = originalHeight;
       displayHeight = originalWidth;
+      console.log(`Video is rotated 90/-90 degrees. Swapping dimensions for display.`);
+      console.log(`Original (stored): ${originalWidth}x${originalHeight}`);
+      console.log(`Display (after rotation): ${displayWidth}x${displayHeight}`);
     } else {
       displayWidth = originalWidth;
       displayHeight = originalHeight;
+      console.log(`Video has ${rotation} degree rotation. No dimension swap needed.`);
+      console.log(`Original/Display: ${displayWidth}x${displayHeight}`);
     }
     
     // Calculate scale factors based on display dimensions
     const scaleX = displayWidth / displayRegion.displayWidth;
     const scaleY = displayHeight / displayRegion.displayHeight;
+    console.log(`Scale factors - X: ${scaleX.toFixed(3)}, Y: ${scaleY.toFixed(3)}`);
+    console.log(`Frontend display size: ${displayRegion.displayWidth}x${displayRegion.displayHeight}`);
+    console.log(`Frontend selection: x=${displayRegion.x}, y=${displayRegion.y}, ${displayRegion.width}x${displayRegion.height}`);
     
     // Calculate actual region coordinates (before rotation transformation)
     const scaledRegion = {
@@ -780,6 +850,7 @@ router.post('/calculate-region', async (req, res) => {
       width: Math.round(displayRegion.width * scaleX),
       height: Math.round(displayRegion.height * scaleY)
     };
+    console.log(`Scaled region (in display coordinate space): x=${scaledRegion.x}, y=${scaledRegion.y}, ${scaledRegion.width}x${scaledRegion.height}`);
     
     // Apply rotation transformation to get final coordinates for FFmpeg
     const actualRegion = transformCropCoordinates(
@@ -791,6 +862,7 @@ router.post('/calculate-region', async (req, res) => {
       originalHeight, 
       rotation
     );
+    console.log(`Final region (after rotation transform): x=${actualRegion.x}, y=${actualRegion.y}, ${actualRegion.width}x${actualRegion.height}`);
     
     // Validate the calculated region
     if (actualRegion.x < 0 || actualRegion.y < 0 || 
