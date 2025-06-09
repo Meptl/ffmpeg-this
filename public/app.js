@@ -13,8 +13,15 @@ These will be in this exact JSON format:
 {
   "input_filename": "example.mp4",
   "operation": "description of what to do",
-  "use_placeholders": true
+  "use_placeholders": true,
+  "region": null | "x,y widthxheight"
 }
+
+The region field (when not null) specifies a region of interest where:
+- x,y is the top-left corner offset in pixels
+- widthxheight is the size of the region in pixels
+- Example: "100,200 1280x720" means offset (100,200) with size 1280x720
+- This is simply a region the user is referencing - only perform actions on it if explicitly requested
 
 For every response, you must provide output in this exact JSON format:
 {
@@ -28,6 +35,7 @@ Rules:
 - Do NOT use actual file paths - only use the placeholder strings {INPUT_FILE} and {OUTPUT_FILE}
 - Always provide output_extension - this field is mandatory
 - Always include the -y flag in your ffmpeg commands to overwrite output files
+- When a region is specified, it indicates an area of interest - only use it if the user explicitly asks for operations on that region
 - Set output_extension to the appropriate file extension (without the dot)
   Examples:
   - For MP3 audio: output_extension: "mp3"
@@ -46,6 +54,13 @@ let showRawMessages = false; // Flag to show raw messages instead of structured 
 let autoExecuteCommands = true; // Flag to auto-execute FFmpeg commands - defaults to true
 let messagesData = []; // Store message data for re-rendering
 let settingsChanged = false; // Track if settings have been modified
+
+// Region selection state
+let regionSelection = null; // {x, y, width, height} in pixels relative to displayed size
+let actualRegion = null; // {x, y, width, height} in pixels relative to original media
+let isSelecting = false;
+let selectionStart = null;
+let activeSelectionContainer = null; // Track which container is in selection mode
 
 // DOM elements
 const messagesDiv = document.getElementById('messages');
@@ -90,9 +105,17 @@ async function initialize() {
         autoExecuteCommands = settings.autoExecuteCommands;
     }
     
-    setupSettingsChangeTracking(); // Setup change tracking after DOM is loaded
+    // Load showRawMessages setting
+    if (settings && settings.showRawMessages !== undefined) {
+        showRawMessages = settings.showRawMessages;
+        // Also set the checkbox if it exists
+        const showRawMessagesCheckbox = document.getElementById('show-raw-messages');
+        if (showRawMessagesCheckbox) {
+            showRawMessagesCheckbox.checked = showRawMessages;
+        }
+    }
     
-    // showRawMessages defaults to false, no need to sync with checkbox
+    setupSettingsChangeTracking(); // Setup change tracking after DOM is loaded
     
     const ffmpegOk = await checkFFmpegStatus();
     if (ffmpegOk) {
@@ -269,19 +292,23 @@ function showChatInterface() {
     
     // showRawMessages defaults to false
     
+    // Add initial file to messages data if not already there
+    if (initialFile && !messagesData.some(msg => msg.type === 'initial-file')) {
+        messagesData.push({
+            type: 'initial-file',
+            file: initialFile,
+            timestamp: Date.now()
+        });
+    }
+    
     // Re-render any existing messages to respect the current toggle state
     if (messagesData.length > 0) {
         reRenderAllMessages();
-    }
-    
-    // Show prompt header if raw mode is enabled and we have a system prompt
-    if (showRawMessages && systemPrompt) {
-        showPromptHeaderMessage();
-    }
-    
-    // Add initial media embed for the initial file
-    if (initialFile) {
-        addInitialFileEmbed();
+    } else {
+        // Show prompt header if raw mode is enabled and we have a system prompt
+        if (showRawMessages && systemPrompt) {
+            showPromptHeaderMessage();
+        }
     }
 }
 
@@ -400,11 +427,55 @@ async function sendMessage() {
     const userInput = messageInput.value.trim();
     if (!userInput || !currentFile) return;
     
+    // Calculate region coordinates if we have a selection
+    let regionString = null;
+    if (regionSelection && currentFile && currentFile.filePath) {
+        // Check if the region selection was made on the current file
+        if (regionSelection.filePath && regionSelection.filePath !== currentFile.filePath) {
+            console.log('Region selection was made on a different file, clearing it');
+            console.log('Region file:', regionSelection.filePath);
+            console.log('Current file:', currentFile.filePath);
+            regionSelection = null;
+            actualRegion = null;
+        } else {
+            try {
+                console.log('Calculating region coordinates for current file:', currentFile.filePath);
+                const regionResponse = await fetch('/api/calculate-region', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        displayRegion: regionSelection,
+                        filePath: currentFile.filePath
+                    })
+                });
+            
+                if (regionResponse.ok) {
+                    const regionData = await regionResponse.json();
+                    regionString = regionData.regionString;
+                    console.log('Region calculated for current file:', regionString);
+                } else {
+                    const errorData = await regionResponse.json();
+                    console.error('Failed to calculate region for current file:', errorData);
+                    if (errorData.debug) {
+                        console.error('Region calculation debug info:', errorData.debug);
+                    }
+                    // Clear region selection if calculation fails (e.g., dimensions don't match)
+                    regionSelection = null;
+                    actualRegion = null;
+                    console.log('Region selection cleared due to calculation failure');
+                }
+            } catch (error) {
+                console.error('Error calculating region:', error);
+            }
+        }
+    }
+    
     // Build JSON message for display with actual server filename
     const jsonMessage = {
         input_filename: currentFile.fileName, // Use server-generated filename, not originalName
         operation: userInput,
-        use_placeholders: true
+        use_placeholders: true,
+        region: regionString
     };
     const formattedJsonMessage = JSON.stringify(jsonMessage, null, 2);
     
@@ -422,6 +493,40 @@ async function sendMessage() {
     }
     messageInput.value = '';
     
+    // Clear region selection after sending message
+    if (regionSelection) {
+        console.log('Clearing region selection after message sent');
+        regionSelection = null;
+        actualRegion = null;
+        
+        // Clear visual selection from all containers
+        document.querySelectorAll('.region-selection-container').forEach(container => {
+            const overlay = container.querySelector('.region-selection-overlay');
+            if (overlay) {
+                overlay.innerHTML = '';
+            }
+            container.classList.remove('has-selection');
+        });
+        
+        // Exit selection mode for any active containers
+        if (activeSelectionContainer) {
+            activeSelectionContainer.classList.remove('selection-mode');
+            const activeBtn = activeSelectionContainer.closest('.media-embed').querySelector('.region-select-btn');
+            if (activeBtn) {
+                activeBtn.classList.remove('active');
+                activeBtn.innerHTML = '✂️';
+            }
+            
+            // Re-enable video controls if needed
+            const video = activeSelectionContainer.querySelector('video');
+            if (video) {
+                video.controls = true;
+            }
+            
+            activeSelectionContainer = null;
+        }
+    }
+    
     // Show loading indicator
     const loadingId = addMessage('assistant', '...', true);
     
@@ -431,7 +536,9 @@ async function sendMessage() {
             message: messageToSend,
             conversationHistory: conversationHistory.slice(-10), // Keep last 10 messages for context
             useStructuredMode: true,
-            userInput: userInput
+            userInput: userInput,
+            // Send pre-calculated region string for consistency
+            preCalculatedRegion: regionString
         };
         
         const response = await fetch('/api/chat', {
@@ -517,13 +624,14 @@ function reRenderAllMessages() {
         showPromptHeaderMessage();
     }
     
-    // Re-add initial file embed if we have an initial file
-    if (initialFile) {
-        addInitialFileEmbed();
-    }
+    // The initial file embed is added once in showChatInterface
+    // We don't re-add it here during re-renders
     
     messagesData.forEach((msgData, index) => {
-        if (msgData.type === 'assistant' && msgData.parsedResponse) {
+        if (msgData.type === 'initial-file') {
+            // Re-render initial file embed
+            addInitialFileEmbed();
+        } else if (msgData.type === 'assistant' && msgData.parsedResponse) {
             if (showRawMessages) {
                 addMessageToUI('assistant', msgData.content);
             } else {
@@ -762,20 +870,29 @@ function createMediaEmbed(filePath, fileName, isResponseMedia = false, hideDownl
             if (isResponseMedia) {
                 return `
                     <div class="media-embed video-embed output-media">
-                        <video controls>
-                            <source src="/api/serve-file?path=${encodeURIComponent(filePath)}" type="video/${getFileExtension(filePath)}">
-                            Your browser does not support the video element.
-                        </video>
+                        <div class="region-selection-container" data-file-path="${filePath.replace(/"/g, '&quot;')}">
+                            <video controls>
+                                <source src="/api/serve-file?path=${encodeURIComponent(filePath)}" type="video/${getFileExtension(filePath)}">
+                                Your browser does not support the video element.
+                            </video>
+                            <div class="region-selection-overlay"></div>
+                            <button class="clear-region-btn" onclick="clearRegionSelection(this)">Clear</button>
+                        </div>
+                        <button class="region-select-btn" onclick="toggleRegionSelectMode(this)" title="Select Region">✂️</button>
                         ${downloadButton}
                     </div>`;
             } else {
                 return `
                     <div class="media-embed video-embed">
-                        <div class="media-header">${downloadButton} 🎬 ${safeFileName}</div>
-                        <video controls>
-                            <source src="/api/serve-file?path=${encodeURIComponent(filePath)}" type="video/${getFileExtension(filePath)}">
-                            Your browser does not support the video element.
-                        </video>
+                        <div class="media-header"><button class="region-select-btn" onclick="toggleRegionSelectMode(this)" title="Select Region">✂️</button>${downloadButton} 🎬 ${safeFileName}</div>
+                        <div class="region-selection-container" data-file-path="${filePath.replace(/"/g, '&quot;')}">
+                            <video controls>
+                                <source src="/api/serve-file?path=${encodeURIComponent(filePath)}" type="video/${getFileExtension(filePath)}">
+                                Your browser does not support the video element.
+                            </video>
+                            <div class="region-selection-overlay"></div>
+                            <button class="clear-region-btn" onclick="clearRegionSelection(this)">Clear</button>
+                        </div>
                     </div>`;
             }
         
@@ -783,14 +900,23 @@ function createMediaEmbed(filePath, fileName, isResponseMedia = false, hideDownl
             if (isResponseMedia) {
                 return `
                     <div class="media-embed image-embed output-media">
-                        <img src="/api/serve-file?path=${encodeURIComponent(filePath)}" alt="${safeFileName}" loading="lazy">
+                        <div class="region-selection-container" data-file-path="${filePath.replace(/"/g, '&quot;')}">
+                            <img src="/api/serve-file?path=${encodeURIComponent(filePath)}" alt="${safeFileName}" loading="lazy">
+                            <div class="region-selection-overlay"></div>
+                            <button class="clear-region-btn" onclick="clearRegionSelection(this)">Clear</button>
+                        </div>
+                        <button class="region-select-btn" onclick="toggleRegionSelectMode(this)" title="Select Region">✂️</button>
                         ${downloadButton}
                     </div>`;
             } else {
                 return `
                     <div class="media-embed image-embed">
-                        <div class="media-header">${downloadButton} 🖼️ ${safeFileName}</div>
-                        <img src="/api/serve-file?path=${encodeURIComponent(filePath)}" alt="${safeFileName}" loading="lazy">
+                        <div class="media-header"><button class="region-select-btn" onclick="toggleRegionSelectMode(this)" title="Select Region">✂️</button>${downloadButton} 🖼️ ${safeFileName}</div>
+                        <div class="region-selection-container" data-file-path="${filePath.replace(/"/g, '&quot;')}">
+                            <img src="/api/serve-file?path=${encodeURIComponent(filePath)}" alt="${safeFileName}" loading="lazy">
+                            <div class="region-selection-overlay"></div>
+                            <button class="clear-region-btn" onclick="clearRegionSelection(this)">Clear</button>
+                        </div>
                     </div>`;
             }
         
@@ -892,12 +1018,9 @@ function closeSettingsModal() {
 
 // Track changes in settings inputs
 function setupSettingsChangeTracking() {
-    // Track all input changes in the settings modal except for the raw messages checkbox
+    // Track all input changes in the settings modal
     const settingsInputs = settingsModal.querySelectorAll('input, textarea, select');
     settingsInputs.forEach(input => {
-        // Skip the raw messages checkbox from change tracking
-        if (input.id === 'show-raw-messages') return;
-        
         input.addEventListener('change', () => {
             settingsChanged = true;
         });
@@ -906,7 +1029,7 @@ function setupSettingsChangeTracking() {
         });
     });
     
-    // Add event listener for show raw messages checkbox (separate from change tracking)
+    // Add event listener for show raw messages checkbox
     const showRawMessagesCheckbox = document.getElementById('show-raw-messages');
     if (showRawMessagesCheckbox) {
         showRawMessagesCheckbox.addEventListener('change', (e) => {
@@ -1286,16 +1409,18 @@ async function saveSettings(suppressAlert = false) {
         });
     }
     
-    // Save persistent settings (ffmpeg path and autoExecute)
+    // Save persistent settings (ffmpeg path, autoExecute, and showRawMessages)
     const ffmpegPath = document.getElementById('ffmpeg-path').value;
     const autoExecute = document.getElementById('auto-execute-commands').checked;
+    const showRaw = document.getElementById('show-raw-messages').checked;
     
     await fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
             ffmpegPath,
-            autoExecuteCommands: autoExecute
+            autoExecuteCommands: autoExecute,
+            showRawMessages: showRaw
         })
     });
     
@@ -1312,3 +1437,253 @@ async function saveSettings(suppressAlert = false) {
         await loadConfiguredProviders();
     }
 }
+
+// Region Selection Functions
+function initializeRegionSelection() {
+    // Add event listeners to all region selection containers
+    document.addEventListener('mousedown', handleRegionMouseDown);
+    document.addEventListener('mousemove', handleRegionMouseMove);
+    document.addEventListener('mouseup', handleRegionMouseUp);
+}
+
+function handleRegionMouseDown(e) {
+    const container = e.target.closest('.region-selection-container');
+    if (!container || e.target.tagName === 'BUTTON') return;
+    
+    // Only allow selection if this container is in selection mode
+    if (!container.classList.contains('selection-mode')) return;
+    
+    // Prevent default drag behavior
+    e.preventDefault();
+    
+    isSelecting = true;
+    const rect = container.getBoundingClientRect();
+    selectionStart = {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+        container: container
+    };
+    
+    // Clear visual selection in this container only
+    const overlay = container.querySelector('.region-selection-overlay');
+    overlay.innerHTML = '';
+    container.classList.remove('has-selection');
+}
+
+function handleRegionMouseMove(e) {
+    if (!isSelecting || !selectionStart) return;
+    
+    const container = selectionStart.container;
+    const rect = container.getBoundingClientRect();
+    const media = container.querySelector('img, video');
+    const mediaRect = media.getBoundingClientRect();
+    
+    // Calculate mouse position relative to container
+    let currentX = e.clientX - rect.left;
+    let currentY = e.clientY - rect.top;
+    
+    // Constrain to media boundaries
+    const mediaOffsetX = mediaRect.left - rect.left;
+    const mediaOffsetY = mediaRect.top - rect.top;
+    const mediaWidth = media.offsetWidth;
+    const mediaHeight = media.offsetHeight;
+    
+    currentX = Math.max(mediaOffsetX, Math.min(currentX, mediaOffsetX + mediaWidth));
+    currentY = Math.max(mediaOffsetY, Math.min(currentY, mediaOffsetY + mediaHeight));
+    
+    // Constrain start position too (in case it was outside)
+    const constrainedStartX = Math.max(mediaOffsetX, Math.min(selectionStart.x, mediaOffsetX + mediaWidth));
+    const constrainedStartY = Math.max(mediaOffsetY, Math.min(selectionStart.y, mediaOffsetY + mediaHeight));
+    
+    // Calculate selection rectangle
+    const x = Math.min(constrainedStartX, currentX);
+    const y = Math.min(constrainedStartY, currentY);
+    const width = Math.abs(currentX - constrainedStartX);
+    const height = Math.abs(currentY - constrainedStartY);
+    
+    // Update region selection
+    updateRegionSelection(container, x, y, width, height);
+}
+
+function handleRegionMouseUp(e) {
+    if (!isSelecting) return;
+    
+    isSelecting = false;
+    
+    // Store the final selection
+    const overlay = selectionStart.container.querySelector('.region-selection-overlay');
+    const selection = overlay.querySelector('.region-selection');
+    if (selection) {
+        const container = selectionStart.container;
+        const media = container.querySelector('img, video');
+        
+        const mediaContainer = selectionStart.container;
+        const filePath = mediaContainer.getAttribute('data-file-path');
+        
+        regionSelection = {
+            x: parseInt(selection.style.left),
+            y: parseInt(selection.style.top),
+            width: parseInt(selection.style.width),
+            height: parseInt(selection.style.height),
+            displayWidth: media.offsetWidth,
+            displayHeight: media.offsetHeight,
+            filePath: filePath // Track which file this selection was made on
+        };
+        
+        console.log('Region selection stored:', regionSelection);
+        console.log('Media element dimensions:', {
+            offsetWidth: media.offsetWidth,
+            offsetHeight: media.offsetHeight,
+            clientWidth: media.clientWidth,
+            clientHeight: media.clientHeight
+        });
+        container.classList.add('has-selection');
+    }
+    
+    selectionStart = null;
+}
+
+function updateRegionSelection(container, x, y, width, height) {
+    const overlay = container.querySelector('.region-selection-overlay');
+    
+    // Clear existing elements
+    overlay.innerHTML = '';
+    
+    if (width < 5 || height < 5) return; // Minimum selection size
+    
+    // Create selection rectangle
+    const selection = document.createElement('div');
+    selection.className = 'region-selection';
+    selection.style.left = x + 'px';
+    selection.style.top = y + 'px';
+    selection.style.width = width + 'px';
+    selection.style.height = height + 'px';
+    overlay.appendChild(selection);
+    
+    // Create darkening overlays
+    const media = container.querySelector('img, video');
+    const mediaWidth = media.offsetWidth;
+    const mediaHeight = media.offsetHeight;
+    
+    // Top darkening
+    const topDark = document.createElement('div');
+    topDark.className = 'region-darkening top';
+    topDark.style.height = y + 'px';
+    overlay.appendChild(topDark);
+    
+    // Bottom darkening
+    const bottomDark = document.createElement('div');
+    bottomDark.className = 'region-darkening bottom';
+    bottomDark.style.height = (mediaHeight - y - height) + 'px';
+    overlay.appendChild(bottomDark);
+    
+    // Left darkening
+    const leftDark = document.createElement('div');
+    leftDark.className = 'region-darkening left';
+    leftDark.style.top = y + 'px';
+    leftDark.style.width = x + 'px';
+    leftDark.style.height = height + 'px';
+    overlay.appendChild(leftDark);
+    
+    // Right darkening
+    const rightDark = document.createElement('div');
+    rightDark.className = 'region-darkening right';
+    rightDark.style.top = y + 'px';
+    rightDark.style.width = (mediaWidth - x - width) + 'px';
+    rightDark.style.height = height + 'px';
+    overlay.appendChild(rightDark);
+}
+
+function clearRegionSelection(button) {
+    console.log('Clearing region selection');
+    const container = button.closest('.region-selection-container');
+    const overlay = container.querySelector('.region-selection-overlay');
+    overlay.innerHTML = '';
+    container.classList.remove('has-selection');
+    // Only clear if this was for the currently active selection
+    const wasActiveContainer = container === activeSelectionContainer || 
+                              container.classList.contains('selection-mode');
+    if (wasActiveContainer || regionSelection) {
+        regionSelection = null;
+        actualRegion = null;
+        console.log('Global region selection cleared');
+    }
+}
+
+// Toggle region selection mode
+function toggleRegionSelectMode(button) {
+    // Find the container within the same media embed
+    const mediaEmbed = button.closest('.media-embed');
+    const container = mediaEmbed.querySelector('.region-selection-container');
+    
+    if (!container) return;
+    
+    const isActive = container.classList.contains('selection-mode');
+    
+    // Disable any other active selection mode
+    if (activeSelectionContainer && activeSelectionContainer !== container) {
+        activeSelectionContainer.classList.remove('selection-mode');
+        const otherEmbed = activeSelectionContainer.closest('.media-embed');
+        const otherBtn = otherEmbed.querySelector('.region-select-btn');
+        if (otherBtn) {
+            otherBtn.classList.remove('active');
+            otherBtn.innerHTML = '✂️';
+        }
+    }
+    
+    if (isActive) {
+        // Disable selection mode
+        container.classList.remove('selection-mode');
+        button.classList.remove('active');
+        button.innerHTML = '✂️';
+        activeSelectionContainer = null;
+        
+        // Re-enable video controls if needed
+        const video = container.querySelector('video');
+        if (video) {
+            video.controls = true;
+        }
+    } else {
+        // Enable selection mode
+        container.classList.add('selection-mode');
+        button.classList.add('active');
+        button.innerHTML = '❌';
+        activeSelectionContainer = container;
+        
+        // Disable video controls to prevent interference
+        const video = container.querySelector('video');
+        if (video) {
+            video.controls = false;
+        }
+        
+        // If we have a global region selection, display it
+        if (regionSelection) {
+            const media = container.querySelector('img, video');
+            if (media) {
+                // Check if this selection matches the current media dimensions
+                const currentWidth = media.offsetWidth;
+                const currentHeight = media.offsetHeight;
+                
+                // If dimensions match, show the selection
+                if (Math.abs(currentWidth - regionSelection.displayWidth) < 5 && 
+                    Math.abs(currentHeight - regionSelection.displayHeight) < 5) {
+                    updateRegionSelection(container, regionSelection.x, regionSelection.y, 
+                                        regionSelection.width, regionSelection.height);
+                    container.classList.add('has-selection');
+                    console.log('Restored region selection in this container');
+                }
+            }
+        }
+    }
+}
+
+// Make functions globally available
+window.clearRegionSelection = clearRegionSelection;
+window.toggleRegionSelectMode = toggleRegionSelectMode;
+
+
+// Initialize region selection when DOM is ready
+document.addEventListener('DOMContentLoaded', initializeRegionSelection);
+
+// Also initialize on dynamic content
+initializeRegionSelection();

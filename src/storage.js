@@ -27,7 +27,8 @@ function getConfigFilePath() {
 // Default settings
 const defaultSettings = {
   ffmpegPath: '',
-  autoExecuteCommands: true
+  autoExecuteCommands: true,
+  showRawMessages: false
 };
 
 // Load settings from file
@@ -124,6 +125,9 @@ async function setAllSettings(newSettings) {
   }
   if (newSettings.autoExecuteCommands !== undefined) {
     merged.autoExecuteCommands = newSettings.autoExecuteCommands;
+  }
+  if (newSettings.showRawMessages !== undefined) {
+    merged.showRawMessages = newSettings.showRawMessages;
   }
   
   return saveSettings(merged);

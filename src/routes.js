@@ -12,6 +12,106 @@ const os = require('os');
 const { spawn } = require('child_process');
 const { getAllSettings, setAllSettings } = require('./storage');
 
+// Function to detect video rotation metadata
+async function getVideoRotation(filePath, ffprobePath) {
+  return new Promise((resolve) => {
+    const ffprobeProcess = spawn(ffprobePath, [
+      '-v', 'quiet',
+      '-select_streams', 'v:0',
+      '-show_entries', 'stream_side_data=displaymatrix',
+      '-of', 'csv=p=0',
+      filePath
+    ]);
+    
+    let stdout = '';
+    let stderr = '';
+    
+    ffprobeProcess.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+    
+    ffprobeProcess.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+    
+    ffprobeProcess.on('close', (code) => {
+      if (code === 0 && stdout.includes('rotation')) {
+        const match = stdout.match(/rotation of (-?\d+(?:\.\d+)?)/);
+        if (match) {
+          const rotation = parseFloat(match[1]);
+          // Normalize to standard rotation values
+          if (Math.abs(rotation - 90) < 1) return resolve(90);
+          if (Math.abs(rotation - (-90)) < 1) return resolve(-90);
+          if (Math.abs(rotation - 180) < 1) return resolve(180);
+          if (Math.abs(rotation - (-180)) < 1) return resolve(-180);
+          return resolve(Math.round(rotation));
+        }
+      }
+      
+      // Also check for rotate tag in metadata
+      const rotateProcess = spawn(ffprobePath, [
+        '-v', 'quiet',
+        '-select_streams', 'v:0',
+        '-show_entries', 'stream_tags=rotate',
+        '-of', 'csv=p=0',
+        filePath
+      ]);
+      
+      let rotateStdout = '';
+      
+      rotateProcess.stdout.on('data', (data) => {
+        rotateStdout += data.toString();
+      });
+      
+      rotateProcess.on('close', (code) => {
+        if (code === 0 && rotateStdout.trim()) {
+          const rotation = parseInt(rotateStdout.trim());
+          if (!isNaN(rotation)) {
+            return resolve(rotation);
+          }
+        }
+        resolve(0); // No rotation found
+      });
+      
+      rotateProcess.on('error', () => resolve(0));
+    });
+    
+    ffprobeProcess.on('error', () => resolve(0));
+  });
+}
+
+// Function to transform crop coordinates based on rotation
+// Maps from display coordinates to stored video frame coordinates
+function transformCropCoordinates(x, y, width, height, videoWidth, videoHeight, rotation) {
+  switch(rotation) {
+    case -90: // Video stored as 640x360, displayed as 360x640 (rotated -90°)
+      // User selects on 360x640 display, map to 640x360 stored frame
+      return {
+        x: y,                         // display y -> stored x
+        y: videoWidth - (x + width),  // display x -> stored y (from right edge)
+        width: height,                // display height -> stored width
+        height: width                 // display width -> stored height
+      };
+    case 90: // Video stored rotated +90°
+      return {
+        x: y,
+        y: videoHeight - (x + width),
+        width: height,
+        height: width
+      };
+    case 180:
+    case -180:
+      return {
+        x: videoWidth - (x + width),
+        y: videoHeight - (y + height),
+        width: width,
+        height: height
+      };
+    default: // 0 degrees
+      return { x, y, width, height };
+  }
+}
+
 // Global variable for pre-configured file
 let preConfiguredFile = null;
 
@@ -181,7 +281,7 @@ function getProviderDisplayName(provider) {
 
 // Chat endpoint
 router.post('/chat', async (req, res) => {
-  const { provider, message, conversationHistory = [], userInput } = req.body;
+  const { provider, message, conversationHistory = [], userInput, preCalculatedRegion } = req.body;
   
   if (!apiConfigs[provider]) {
     return res.status(400).json({ error: 'Invalid provider' });
@@ -210,11 +310,15 @@ router.post('/chat', async (req, res) => {
     // Get just the filename from the current input file
     const inputFilename = path.basename(currentInputFile);
     
+    // Use pre-calculated region if provided
+    const regionString = preCalculatedRegion || null;
+    
     // Build JSON message directly
     const jsonMessage = {
       input_filename: inputFilename,
       operation: userInput || message,
-      use_placeholders: true
+      use_placeholders: true,
+      region: regionString
     };
     
     const formattedJsonMessage = JSON.stringify(jsonMessage, null, 2);
@@ -227,8 +331,18 @@ These will be in this exact JSON format:
 {
   "input_filename": "example.mp4",
   "operation": "description of what to do",
-  "use_placeholders": true
+  "use_placeholders": true,
+  "region": null | "x,y widthxheight"
 }
+
+The region field (when not null) specifies a region of interest where:
+- x,y is the top-left corner offset in pixels
+- widthxheight is the size of the region in pixels
+- Example: "100,200 1280x720" means offset (100,200) with size 1280x720
+- To parse: split by space, then "100,200" gives x=100,y=200 and "1280x720" gives width=1280,height=720
+- This is simply a region the user is referencing - only perform actions on it if explicitly requested
+- For cropping operations, use the crop filter: crop=width:height:x:y
+- Example: region "100,200 1280x720" becomes crop=1280:720:100:200
 
 For every response, you must provide output in this exact JSON format:
 {
@@ -474,24 +588,264 @@ router.post('/set-file-path', (req, res) => {
   }
 });
 
-// Get file info by path
-router.post('/file-info', (req, res) => {
+// Get file info by path (including media dimensions)
+router.post('/file-info', async (req, res) => {
   try {
     const { filePath } = req.body;
     const fullPath = path.resolve(filePath);
     
     if (fs.existsSync(fullPath)) {
       const stats = fs.statSync(fullPath);
-      res.json({
+      const result = {
         exists: true,
         size: stats.size,
         path: fullPath,
         isFile: stats.isFile()
-      });
+      };
+      
+      // Try to get media dimensions using ffprobe
+      const settings = await getAllSettings();
+      const ffmpegPath = settings.ffmpegPath || 'ffmpeg';
+      const ffprobePath = ffmpegPath.replace(/ffmpeg([^\/\\]*)$/, 'ffprobe$1');
+      
+      try {
+        await new Promise((resolve, reject) => {
+          const ffprobeProcess = spawn(ffprobePath, [
+            '-v', 'error',
+            '-select_streams', 'v:0',
+            '-show_entries', 'stream=width,height',
+            '-of', 'json',
+            fullPath
+          ]);
+          
+          let stdout = '';
+          let stderr = '';
+          
+          ffprobeProcess.stdout.on('data', (data) => {
+            stdout += data.toString();
+          });
+          
+          ffprobeProcess.stderr.on('data', (data) => {
+            stderr += data.toString();
+          });
+          
+          ffprobeProcess.on('close', async (code) => {
+            if (code === 0) {
+              try {
+                const probeResult = JSON.parse(stdout);
+                if (probeResult.streams && probeResult.streams[0]) {
+                  result.width = probeResult.streams[0].width;
+                  result.height = probeResult.streams[0].height;
+                  
+                  // Get rotation metadata
+                  const rotation = await getVideoRotation(fullPath, ffprobePath);
+                  result.rotation = rotation;
+                  
+                  // Calculate display dimensions considering rotation
+                  if (rotation === 90 || rotation === -90) {
+                    result.displayWidth = result.height;
+                    result.displayHeight = result.width;
+                  } else {
+                    result.displayWidth = result.width;
+                    result.displayHeight = result.height;
+                  }
+                }
+              } catch (e) {
+                console.error('Failed to parse ffprobe output:', e);
+              }
+              resolve();
+            } else {
+              reject(new Error(`ffprobe exited with code ${code}`));
+            }
+          });
+          
+          ffprobeProcess.on('error', (error) => {
+            reject(error);
+          });
+        });
+      } catch (error) {
+        console.log('Could not get media dimensions:', error.message);
+        // Continue without dimensions - not a critical error
+      }
+      
+      res.json(result);
     } else {
       res.status(404).json({ exists: false });
     }
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Calculate region coordinates
+router.post('/calculate-region', async (req, res) => {
+  try {
+    const { displayRegion, filePath } = req.body;
+    
+    if (!displayRegion || !filePath) {
+      return res.status(400).json({ error: 'Missing required parameters' });
+    }
+    
+    const settings = await getAllSettings();
+    const ffprobePath = (settings.ffmpegPath || 'ffmpeg').replace(/ffmpeg([^\/\\]*)$/, 'ffprobe$1');
+    
+    // Get original media dimensions
+    const probeResult = await new Promise((resolve, reject) => {
+      const ffprobeProcess = spawn(ffprobePath, [
+        '-v', 'error',
+        '-select_streams', 'v:0',
+        '-show_entries', 'stream=width,height',
+        '-of', 'json',
+        filePath
+      ]);
+      
+      let stdout = '';
+      ffprobeProcess.stdout.on('data', (data) => stdout += data.toString());
+      ffprobeProcess.on('close', (code) => {
+        if (code === 0) {
+          try {
+            resolve(JSON.parse(stdout));
+          } catch (e) {
+            reject(e);
+          }
+        } else {
+          reject(new Error(`ffprobe exited with code ${code}`));
+        }
+      });
+      ffprobeProcess.on('error', reject);
+    });
+    
+    let originalWidth, originalHeight;
+    
+    if (probeResult.streams && probeResult.streams[0]) {
+      originalWidth = probeResult.streams[0].width;
+      originalHeight = probeResult.streams[0].height;
+    } else {
+      // Try for images
+      const formatResult = await new Promise((resolve, reject) => {
+        const ffprobeProcess = spawn(ffprobePath, [
+          '-v', 'error',
+          '-show_entries', 'stream=width,height',
+          '-of', 'json',
+          filePath
+        ]);
+        
+        let stdout = '';
+        ffprobeProcess.stdout.on('data', (data) => stdout += data.toString());
+        ffprobeProcess.on('close', (code) => {
+          if (code === 0) {
+            try {
+              resolve(JSON.parse(stdout));
+            } catch (e) {
+              reject(e);
+            }
+          } else {
+            reject(new Error(`ffprobe exited with code ${code}`));
+          }
+        });
+        ffprobeProcess.on('error', reject);
+      });
+      
+      if (formatResult.streams && formatResult.streams[0]) {
+        originalWidth = formatResult.streams[0].width;
+        originalHeight = formatResult.streams[0].height;
+      }
+    }
+    
+    if (!originalWidth || !originalHeight) {
+      return res.status(400).json({ error: 'Could not determine media dimensions' });
+    }
+    
+    // Get rotation metadata
+    const rotation = await getVideoRotation(filePath, ffprobePath);
+    
+    // Calculate display dimensions considering rotation
+    let displayWidth, displayHeight;
+    if (rotation === 90 || rotation === -90) {
+      displayWidth = originalHeight;
+      displayHeight = originalWidth;
+    } else {
+      displayWidth = originalWidth;
+      displayHeight = originalHeight;
+    }
+    
+    // Calculate scale factors based on display dimensions
+    const scaleX = displayWidth / displayRegion.displayWidth;
+    const scaleY = displayHeight / displayRegion.displayHeight;
+    
+    // Calculate actual region coordinates (before rotation transformation)
+    const scaledRegion = {
+      x: Math.round(displayRegion.x * scaleX),
+      y: Math.round(displayRegion.y * scaleY),
+      width: Math.round(displayRegion.width * scaleX),
+      height: Math.round(displayRegion.height * scaleY)
+    };
+    
+    // Apply rotation transformation to get final coordinates for FFmpeg
+    const actualRegion = transformCropCoordinates(
+      scaledRegion.x, 
+      scaledRegion.y, 
+      scaledRegion.width, 
+      scaledRegion.height, 
+      originalWidth, 
+      originalHeight, 
+      rotation
+    );
+    
+    // Validate the calculated region
+    if (actualRegion.x < 0 || actualRegion.y < 0 || 
+        actualRegion.width <= 0 || actualRegion.height <= 0 ||
+        actualRegion.x + actualRegion.width > originalWidth ||
+        actualRegion.y + actualRegion.height > originalHeight) {
+      
+      console.error('Invalid region calculated:', {
+        displayRegion,
+        originalDimensions: { width: originalWidth, height: originalHeight },
+        rotation,
+        displayDimensions: { width: displayWidth, height: displayHeight },
+        scaleFactors: { scaleX, scaleY },
+        scaledRegion,
+        actualRegion
+      });
+      
+      return res.status(400).json({ 
+        error: 'Invalid region dimensions calculated',
+        debug: {
+          displayRegion,
+          originalDimensions: { width: originalWidth, height: originalHeight },
+          rotation,
+          displayDimensions: { width: displayWidth, height: displayHeight },
+          scaleFactors: { scaleX, scaleY },
+          scaledRegion,
+          actualRegion
+        }
+      });
+    }
+    
+    // Format region string as "x,y widthxheight"
+    const regionString = `${actualRegion.x},${actualRegion.y} ${actualRegion.width}x${actualRegion.height}`;
+    
+    console.log('Region calculation successful:', {
+      displayRegion,
+      originalDimensions: { width: originalWidth, height: originalHeight },
+      rotation,
+      displayDimensions: { width: displayWidth, height: displayHeight },
+      scaleFactors: { scaleX, scaleY },
+      scaledRegion,
+      actualRegion,
+      regionString
+    });
+    
+    res.json({ 
+      regionString,
+      actualRegion,
+      originalDimensions: { width: originalWidth, height: originalHeight },
+      rotation,
+      displayDimensions: { width: displayWidth, height: displayHeight }
+    });
+    
+  } catch (error) {
+    console.error('Error calculating region:', error);
     res.status(500).json({ error: error.message });
   }
 });

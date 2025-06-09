@@ -754,7 +754,7 @@ h1 {
 
 /* Media Embed Styles */
 .media-embed {
-    margin: 1rem 0;
+    margin: 0.5rem 0;
     border: 1px solid #e1e4e8;
     border-radius: 8px;
     overflow: hidden;
@@ -765,11 +765,16 @@ h1 {
 /* Output media embeds with inline download button */
 .media-embed.output-media {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 0.5rem;
     padding: 0.5rem;
     border: none;
     background-color: transparent;
+}
+
+.media-embed.output-media video,
+.media-embed.output-media img {
+    flex-shrink: 0;
 }
 
 .media-embed.output-media .download-btn {
@@ -809,12 +814,13 @@ h1 {
 .video-embed video {
     width: auto;
     height: auto;
-    max-width: 200px;
-    max-height: 200px;
-    margin: 0.5rem;
+    max-width: 400px;
+    max-height: 300px;
+    margin: 0.25rem;
     border-radius: 4px;
     background-color: #000;
     object-fit: contain;
+    display: block;
 }
 
 .video-embed.output-media video {
@@ -822,11 +828,11 @@ h1 {
 }
 
 .image-embed img {
-    max-width: 200px;
-    max-height: 200px;
+    max-width: 300px;
+    max-height: 300px;
     width: auto;
     height: auto;
-    margin: 0.5rem;
+    margin: 0.25rem;
     border-radius: 4px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.1);
     object-fit: contain;
@@ -1015,7 +1021,7 @@ h1 {
 /* Responsive media embeds */
 @media (max-width: 768px) {
     .video-embed video {
-        max-width: 200px;
+        max-width: 300px;
         max-height: 200px;
     }
     
@@ -1024,7 +1030,7 @@ h1 {
     }
     
     .image-embed img {
-        max-width: 200px;
+        max-width: 300px;
         max-height: 200px;
     }
     
@@ -1103,4 +1109,133 @@ h1 {
     color: #6c757d;
     line-height: 1.4;
     margin-top: 0.25rem;
+}
+
+/* Region Selection Styles */
+.region-selection-container {
+    position: relative;
+    display: inline-block;
+}
+
+.region-selection-container video,
+.region-selection-container img {
+    display: block;
+}
+
+.region-selection-container.selection-mode {
+    cursor: crosshair;
+}
+
+.region-selection-container.selection-mode img,
+.region-selection-container.selection-mode video {
+    user-select: none;
+    -webkit-user-drag: none;
+    -khtml-user-drag: none;
+    -moz-user-drag: none;
+    -o-user-drag: none;
+    pointer-events: none;
+}
+
+.region-select-btn {
+    background-color: #6c757d;
+    color: white;
+    border: none;
+    padding: 0.4rem;
+    border-radius: 4px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+    margin-right: 0.5rem;
+}
+
+.region-select-btn:hover {
+    background-color: #5a6268;
+    transform: translateY(-1px);
+}
+
+.region-select-btn.active {
+    background-color: #27ae60;
+}
+
+.region-select-btn.active:hover {
+    background-color: #229954;
+}
+
+.media-header .region-select-btn {
+    margin-right: 0.5rem;
+}
+
+.output-media > .region-select-btn {
+    position: relative;
+    z-index: 15;
+}
+
+.region-selection-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+.region-selection {
+    position: absolute;
+    background-color: transparent;
+    pointer-events: none;
+    z-index: 10;
+}
+
+.region-darkening {
+    position: absolute;
+    background-color: rgba(0, 0, 0, 0.5);
+    pointer-events: none;
+    z-index: 5;
+}
+
+.region-darkening.top {
+    top: 0;
+    left: 0;
+    width: 100%;
+}
+
+.region-darkening.bottom {
+    bottom: 0;
+    left: 0;
+    width: 100%;
+}
+
+.region-darkening.left {
+    left: 0;
+}
+
+.region-darkening.right {
+    right: 0;
+}
+
+
+.clear-region-btn {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    background-color: #e74c3c;
+    color: white;
+    border: none;
+    padding: 0.25rem 0.5rem;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 0.75rem;
+    z-index: 15;
+    display: none;
+}
+
+.region-selection-container.selection-mode.has-selection .clear-region-btn {
+    display: block;
+}
+
+.clear-region-btn:hover {
+    background-color: #c0392b;
 }
