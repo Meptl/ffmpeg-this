@@ -1,16 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const { OpenAI } = require('openai');
-const Anthropic = require('@anthropic-ai/sdk');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
-const Groq = require('groq-sdk');
 const axios = require('axios');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { spawn } = require('child_process');
 const { getAllSettings, setAllSettings } = require('./storage');
+const { AIProviderFactory } = require('./services/ai-providers');
 
 // Function to detect video rotation metadata
 async function getVideoRotation(filePath, ffprobePath) {
@@ -278,13 +275,9 @@ let apiConfigs = {
 
 // Log which providers are configured (without exposing keys)
 console.log('Configured providers:');
-Object.entries(apiConfigs).forEach(([provider, config]) => {
-  const isConfigured = provider === 'local' 
-    ? !!config.endpoint 
-    : !!config.apiKey;
-  if (isConfigured) {
-    console.log(`✓ ${provider}`);
-  }
+const configuredProviders = AIProviderFactory.getConfiguredProviders();
+configuredProviders.forEach(provider => {
+  console.log(`✓ ${provider.id}`);
 });
 
 // Update API configuration
@@ -313,32 +306,10 @@ router.get('/config', (req, res) => {
 
 // Get list of configured providers
 router.get('/configured-providers', (req, res) => {
-  const providers = [];
-  Object.entries(apiConfigs).forEach(([provider, config]) => {
-    const isConfigured = provider === 'local' 
-      ? !!config.endpoint 
-      : !!config.apiKey;
-    if (isConfigured) {
-      providers.push({
-        id: provider,
-        name: getProviderDisplayName(provider)
-      });
-    }
-  });
+  const providers = AIProviderFactory.getConfiguredProviders();
   res.json({ providers });
 });
 
-function getProviderDisplayName(provider) {
-  const names = {
-    openai: 'OpenAI',
-    anthropic: 'Anthropic (Claude)',
-    gemini: 'Google Gemini',
-    groq: 'Groq',
-    deepseek: 'DeepSeek',
-    local: 'Local LLM'
-  };
-  return names[provider] || provider;
-}
 
 // Chat endpoint
 router.post('/chat', async (req, res) => {
@@ -350,8 +321,14 @@ router.post('/chat', async (req, res) => {
   
   const config = apiConfigs[provider];
   
-  if (!config.apiKey && provider !== 'local') {
-    return res.status(400).json({ error: 'API key not configured' });
+  // Validate provider configuration using factory
+  try {
+    const testProvider = await AIProviderFactory.getProvider(provider, config);
+    if (!testProvider.isConfigured()) {
+      return res.status(400).json({ error: `${provider} is not properly configured` });
+    }
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
   }
   
   const sessionId = getSessionId(req);
@@ -440,98 +417,17 @@ Rules:
     
     const finalMessage = formattedJsonMessage;
     
-    let response;
+    // Use AI provider factory to handle different providers
+    const aiProvider = await AIProviderFactory.getProvider(provider, config);
     
-    switch (provider) {
-      case 'openai':
-        const openai = new OpenAI({ apiKey: config.apiKey });
-        const openaiResponse = await openai.chat.completions.create({
-          model: config.model,
-          messages: [...conversationHistory, { role: 'user', content: finalMessage }],
-          temperature: 0.7,
-          max_tokens: 1000
-        });
-        response = openaiResponse.choices[0].message.content;
-        break;
-        
-      case 'anthropic':
-        const anthropic = new Anthropic({ apiKey: config.apiKey });
-        const anthropicResponse = await anthropic.messages.create({
-          model: config.model,
-          messages: [...conversationHistory, { role: 'user', content: finalMessage }],
-          max_tokens: 1000
-        });
-        response = anthropicResponse.content[0].text;
-        break;
-        
-      case 'gemini':
-        const genAI = new GoogleGenerativeAI(config.apiKey);
-        const geminiModel = genAI.getGenerativeModel({ model: config.model });
-        const geminiResponse = await geminiModel.generateContent(finalMessage);
-        response = geminiResponse.response.text();
-        break;
-        
-      case 'groq':
-        const groq = new Groq({ apiKey: config.apiKey });
-        const groqResponse = await groq.chat.completions.create({
-          model: config.model,
-          messages: [...conversationHistory, { role: 'user', content: finalMessage }],
-          temperature: 0.7,
-          max_tokens: 1000
-        });
-        response = groqResponse.choices[0].message.content;
-        break;
-        
-      case 'deepseek':
-        // DeepSeek uses OpenAI-compatible API
-        const deepseekResponse = await axios.post('https://api.deepseek.com/v1/chat/completions', {
-          model: config.model,
-          messages: [...conversationHistory, { role: 'user', content: finalMessage }],
-          temperature: 0.7,
-          max_tokens: 1000
-        }, {
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${config.apiKey}`
-          }
-        });
-        response = deepseekResponse.data.choices[0].message.content;
-        break;
-        
-      case 'local':
-        if (!config.endpoint) {
-          throw new Error('Local endpoint not configured');
-        }
-        const headers = {
-          'Content-Type': 'application/json',
-          ...config.headers
-        };
-        if (config.apiKey) {
-          headers['Authorization'] = `Bearer ${config.apiKey}`;
-        }
-        
-        const localResponse = await axios.post(config.endpoint, {
-          model: config.model,
-          messages: [...conversationHistory, { role: 'user', content: finalMessage }],
-          temperature: 0.7,
-          max_tokens: 1000
-        }, { headers });
-        
-        // Handle different response formats from local LLMs
-        if (localResponse.data.choices && localResponse.data.choices[0]) {
-          response = localResponse.data.choices[0].message?.content || localResponse.data.choices[0].text;
-        } else if (localResponse.data.response) {
-          response = localResponse.data.response;
-        } else if (localResponse.data.content) {
-          response = localResponse.data.content;
-        } else {
-          response = JSON.stringify(localResponse.data);
-        }
-        break;
-        
-      default:
-        throw new Error('Unknown provider');
-    }
+    const messages = [...conversationHistory, { role: 'user', content: finalMessage }];
+    const chatResponse = await aiProvider.chat(messages, {
+      model: config.model,
+      temperature: 0.7,
+      maxTokens: 1000
+    });
+    
+    const response = chatResponse.content;
     
     // Always try to parse structured response
     try {
