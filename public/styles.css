@@ -765,7 +765,7 @@ h1 {
 /* Output media embeds with inline download button */
 .media-embed.output-media {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     gap: 0.5rem;
     padding: 0.5rem;
     border: none;
@@ -1065,6 +1065,8 @@ h1 {
     transition: all 0.2s ease;
     margin-left: auto;
     flex-shrink: 0;
+    width: 32px;
+    height: 32px;
 }
 
 .download-btn:hover {
@@ -1149,6 +1151,8 @@ h1 {
     transition: all 0.2s ease;
     flex-shrink: 0;
     margin-right: 0.5rem;
+    width: 32px;
+    height: 32px;
 }
 
 .region-select-btn:hover {
@@ -1171,6 +1175,7 @@ h1 {
 .output-media > .region-select-btn {
     position: relative;
     z-index: 15;
+    margin-right: 0;
 }
 
 .region-selection-overlay {
