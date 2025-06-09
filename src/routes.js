@@ -6,169 +6,10 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { spawn } = require('child_process');
+const ffmpegService = require('./services/ffmpeg');
 const { getAllSettings, setAllSettings } = require('./storage');
 const { AIProviderFactory } = require('./services/ai-providers');
 
-// Function to detect video rotation metadata
-async function getVideoRotation(filePath, ffprobePath) {
-  return new Promise((resolve) => {
-    // Use the simple ffprobe command that shows rotation directly
-    const ffprobeProcess = spawn(ffprobePath, [
-      '-loglevel', 'error',
-      '-show_entries', 'stream=width,height:stream_side_data=displaymatrix',
-      '-select_streams', 'v:0',
-      '-of', 'default=nw=1',
-      filePath
-    ]);
-    
-    let stdout = '';
-    let stderr = '';
-    
-    ffprobeProcess.stdout.on('data', (data) => {
-      stdout += data.toString();
-    });
-    
-    ffprobeProcess.stderr.on('data', (data) => {
-      stderr += data.toString();
-    });
-    
-    ffprobeProcess.on('close', (code) => {
-      console.log('Rotation detection output:', stdout);
-      console.log('Rotation detection stderr:', stderr);
-      
-      if (code === 0 && stdout) {
-        // Look for rotation in the output
-        const match = stdout.match(/rotation of (-?\d+(?:\.\d+)?)/);
-        if (match) {
-          const rotation = parseFloat(match[1]);
-          console.log('Found rotation:', rotation);
-          // Normalize to standard rotation values
-          if (Math.abs(rotation - 90) < 1) return resolve(90);
-          if (Math.abs(rotation + 90) < 1) return resolve(-90);
-          if (Math.abs(rotation - 180) < 1) return resolve(180);
-          if (Math.abs(rotation + 180) < 1) return resolve(-180);
-          return resolve(Math.round(rotation));
-        }
-      }
-      
-      // Try alternative method with JSON format
-      const jsonProcess = spawn(ffprobePath, [
-        '-v', 'quiet',
-        '-print_format', 'json',
-        '-show_format', 
-        '-show_streams',
-        filePath
-      ]);
-      
-      let jsonStdout = '';
-      
-      jsonProcess.stdout.on('data', (data) => {
-        jsonStdout += data.toString();
-      });
-      
-      jsonProcess.on('close', (code) => {
-        if (code === 0) {
-          try {
-            const data = JSON.parse(jsonStdout);
-            console.log('JSON probe data:', JSON.stringify(data, null, 2));
-            
-            if (data.streams) {
-              for (const stream of data.streams) {
-                if (stream.codec_type === 'video') {
-                  // Check for rotate tag
-                  if (stream.tags && stream.tags.rotate) {
-                    const rotation = parseInt(stream.tags.rotate);
-                    console.log('Found rotate tag:', rotation);
-                    if (!isNaN(rotation)) {
-                      return resolve(rotation);
-                    }
-                  }
-                  
-                  // Check side_data for displaymatrix
-                  if (stream.side_data_list) {
-                    for (const sideData of stream.side_data_list) {
-                      console.log('Side data:', sideData);
-                      if (sideData.side_data_type === 'Display Matrix' || sideData.displaymatrix) {
-                        // Sometimes the rotation is directly in the sideData
-                        if (sideData.rotation !== undefined) {
-                          const rotation = parseFloat(sideData.rotation);
-                          console.log('Found rotation in side_data:', rotation);
-                          if (!isNaN(rotation)) {
-                            if (Math.abs(rotation - 90) < 1) return resolve(90);
-                            if (Math.abs(rotation + 90) < 1) return resolve(-90);
-                            if (Math.abs(rotation - 180) < 1) return resolve(180);
-                            if (Math.abs(rotation + 180) < 1) return resolve(-180);
-                            return resolve(Math.round(rotation));
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          } catch (e) {
-            console.error('Error parsing JSON from ffprobe:', e);
-          }
-        }
-        
-        console.log('No rotation found, returning 0');
-        resolve(0); // No rotation found
-      });
-      
-      jsonProcess.on('error', (err) => {
-        console.error('JSON probe error:', err);
-        resolve(0);
-      });
-    });
-    
-    ffprobeProcess.on('error', (err) => {
-      console.error('First probe error:', err);
-      resolve(0);
-    });
-  });
-}
-
-// Function to transform crop coordinates based on rotation
-// Maps from display coordinates to stored video frame coordinates
-function transformCropCoordinates(x, y, width, height, videoWidth, videoHeight, rotation) {
-  switch(rotation) {
-    case 90: // 90 degrees clockwise rotation
-      // When video is rotated 90° clockwise:
-      // - Display coordinate system is rotated
-      // - x_new = original_height - y - height
-      // - y_new = x
-      // - width and height are swapped
-      return {
-        x: videoHeight - y - height,  // source height - display y - display height
-        y: x,                         // display x becomes new y
-        width: height,                // display height becomes new width
-        height: width                 // display width becomes new height
-      };
-    case -90: // 90 degrees counter-clockwise rotation
-      // When video is rotated 90° counter-clockwise:
-      // - x_new = y
-      // - y_new = original_width - x - width
-      // - width and height are swapped
-      return {
-        x: y,                         // display y becomes new x
-        y: videoHeight - x - width,    // source width - display x - display width
-        width: height,                // display height becomes new width
-        height: width                 // display width becomes new height
-      };
-    case 180:
-    case -180:
-      // 180 degree rotation: coordinates are flipped
-      return {
-        x: videoWidth - x - width,
-        y: videoHeight - y - height,
-        width: width,
-        height: height
-      };
-    default: // 0 degrees (no rotation)
-      return { x, y, width, height };
-  }
-}
 
 // Global variable for pre-configured file
 let preConfiguredFile = null;
@@ -176,8 +17,6 @@ let preConfiguredFile = null;
 // Global variable for tracking current input file per session
 const sessionFileTracking = new Map(); // sessionId -> currentInputFile
 
-// Global variable for tracking active FFmpeg processes
-const activeProcesses = new Map(); // executionId -> ffmpegProcess
 
 // Create tmp directory for intermediate files and uploads
 const tmpDir = path.join(os.tmpdir(), 'ffmpeg-this');
@@ -566,60 +405,12 @@ router.post('/file-info', async (req, res) => {
       const ffprobePath = ffmpegPath.replace(/ffmpeg([^\/\\]*)$/, 'ffprobe$1');
       
       try {
-        await new Promise((resolve, reject) => {
-          const ffprobeProcess = spawn(ffprobePath, [
-            '-v', 'error',
-            '-select_streams', 'v:0',
-            '-show_entries', 'stream=width,height',
-            '-of', 'json',
-            fullPath
-          ]);
-          
-          let stdout = '';
-          let stderr = '';
-          
-          ffprobeProcess.stdout.on('data', (data) => {
-            stdout += data.toString();
-          });
-          
-          ffprobeProcess.stderr.on('data', (data) => {
-            stderr += data.toString();
-          });
-          
-          ffprobeProcess.on('close', async (code) => {
-            if (code === 0) {
-              try {
-                const probeResult = JSON.parse(stdout);
-                if (probeResult.streams && probeResult.streams[0]) {
-                  result.width = probeResult.streams[0].width;
-                  result.height = probeResult.streams[0].height;
-                  
-                  // Get rotation metadata
-                  const rotation = await getVideoRotation(fullPath, ffprobePath);
-                  result.rotation = rotation;
-                  
-                  // Calculate display dimensions considering rotation
-                  if (rotation === 90 || rotation === -90) {
-                    result.displayWidth = result.height;
-                    result.displayHeight = result.width;
-                  } else {
-                    result.displayWidth = result.width;
-                    result.displayHeight = result.height;
-                  }
-                }
-              } catch (e) {
-                console.error('Failed to parse ffprobe output:', e);
-              }
-              resolve();
-            } else {
-              reject(new Error(`ffprobe exited with code ${code}`));
-            }
-          });
-          
-          ffprobeProcess.on('error', (error) => {
-            reject(error);
-          });
-        });
+        const dimensions = await ffmpegService.getMediaDimensions(fullPath, ffprobePath);
+        result.width = dimensions.width;
+        result.height = dimensions.height;
+        result.rotation = dimensions.rotation;
+        result.displayWidth = dimensions.displayWidth;
+        result.displayHeight = dimensions.displayHeight;
       } catch (error) {
         console.log('Could not get media dimensions:', error.message);
         // Continue without dimensions - not a critical error
@@ -646,175 +437,28 @@ router.post('/calculate-region', async (req, res) => {
     const settings = await getAllSettings();
     const ffprobePath = (settings.ffmpegPath || 'ffmpeg').replace(/ffmpeg([^\/\\]*)$/, 'ffprobe$1');
     
-    // Get original media dimensions
-    const probeResult = await new Promise((resolve, reject) => {
-      const ffprobeProcess = spawn(ffprobePath, [
-        '-v', 'error',
-        '-select_streams', 'v:0',
-        '-show_entries', 'stream=width,height',
-        '-of', 'json',
-        filePath
-      ]);
-      
-      let stdout = '';
-      ffprobeProcess.stdout.on('data', (data) => stdout += data.toString());
-      ffprobeProcess.on('close', (code) => {
-        if (code === 0) {
-          try {
-            resolve(JSON.parse(stdout));
-          } catch (e) {
-            reject(e);
-          }
-        } else {
-          reject(new Error(`ffprobe exited with code ${code}`));
-        }
-      });
-      ffprobeProcess.on('error', reject);
-    });
-    
-    let originalWidth, originalHeight;
-    
-    if (probeResult.streams && probeResult.streams[0]) {
-      originalWidth = probeResult.streams[0].width;
-      originalHeight = probeResult.streams[0].height;
-    } else {
-      // Try for images
-      const formatResult = await new Promise((resolve, reject) => {
-        const ffprobeProcess = spawn(ffprobePath, [
-          '-v', 'error',
-          '-show_entries', 'stream=width,height',
-          '-of', 'json',
-          filePath
-        ]);
-        
-        let stdout = '';
-        ffprobeProcess.stdout.on('data', (data) => stdout += data.toString());
-        ffprobeProcess.on('close', (code) => {
-          if (code === 0) {
-            try {
-              resolve(JSON.parse(stdout));
-            } catch (e) {
-              reject(e);
-            }
-          } else {
-            reject(new Error(`ffprobe exited with code ${code}`));
-          }
-        });
-        ffprobeProcess.on('error', reject);
-      });
-      
-      if (formatResult.streams && formatResult.streams[0]) {
-        originalWidth = formatResult.streams[0].width;
-        originalHeight = formatResult.streams[0].height;
-      }
-    }
-    
-    if (!originalWidth || !originalHeight) {
-      return res.status(400).json({ error: 'Could not determine media dimensions' });
-    }
-    
-    // Get rotation metadata
-    const rotation = await getVideoRotation(filePath, ffprobePath);
-    console.log(`Video rotation detected: ${rotation} degrees`);
-    
-    // Calculate display dimensions considering rotation
-    let displayWidth, displayHeight;
-    if (rotation === 90 || rotation === -90) {
-      displayWidth = originalHeight;
-      displayHeight = originalWidth;
-      console.log(`Video is rotated 90/-90 degrees. Swapping dimensions for display.`);
-      console.log(`Original (stored): ${originalWidth}x${originalHeight}`);
-      console.log(`Display (after rotation): ${displayWidth}x${displayHeight}`);
-    } else {
-      displayWidth = originalWidth;
-      displayHeight = originalHeight;
-      console.log(`Video has ${rotation} degree rotation. No dimension swap needed.`);
-      console.log(`Original/Display: ${displayWidth}x${displayHeight}`);
-    }
-    
-    // Calculate scale factors based on display dimensions
-    const scaleX = displayWidth / displayRegion.displayWidth;
-    const scaleY = displayHeight / displayRegion.displayHeight;
-    console.log(`Scale factors - X: ${scaleX.toFixed(3)}, Y: ${scaleY.toFixed(3)}`);
-    console.log(`Frontend display size: ${displayRegion.displayWidth}x${displayRegion.displayHeight}`);
-    console.log(`Frontend selection: x=${displayRegion.x}, y=${displayRegion.y}, ${displayRegion.width}x${displayRegion.height}`);
-    
-    // Calculate actual region coordinates (before rotation transformation)
-    const scaledRegion = {
-      x: Math.round(displayRegion.x * scaleX),
-      y: Math.round(displayRegion.y * scaleY),
-      width: Math.round(displayRegion.width * scaleX),
-      height: Math.round(displayRegion.height * scaleY)
-    };
-    console.log(`Scaled region (in display coordinate space): x=${scaledRegion.x}, y=${scaledRegion.y}, ${scaledRegion.width}x${scaledRegion.height}`);
-    
-    // Apply rotation transformation to get final coordinates for FFmpeg
-    const actualRegion = transformCropCoordinates(
-      scaledRegion.x, 
-      scaledRegion.y, 
-      scaledRegion.width, 
-      scaledRegion.height, 
-      originalWidth, 
-      originalHeight, 
-      rotation
-    );
-    console.log(`Final region (after rotation transform): x=${actualRegion.x}, y=${actualRegion.y}, ${actualRegion.width}x${actualRegion.height}`);
-    
-    // Validate the calculated region
-    if (actualRegion.x < 0 || actualRegion.y < 0 || 
-        actualRegion.width <= 0 || actualRegion.height <= 0 ||
-        actualRegion.x + actualRegion.width > originalWidth ||
-        actualRegion.y + actualRegion.height > originalHeight) {
-      
-      console.error('Invalid region calculated:', {
-        displayRegion,
-        originalDimensions: { width: originalWidth, height: originalHeight },
-        rotation,
-        displayDimensions: { width: displayWidth, height: displayHeight },
-        scaleFactors: { scaleX, scaleY },
-        scaledRegion,
-        actualRegion
-      });
-      
-      return res.status(400).json({ 
-        error: 'Invalid region dimensions calculated',
-        debug: {
-          displayRegion,
-          originalDimensions: { width: originalWidth, height: originalHeight },
-          rotation,
-          displayDimensions: { width: displayWidth, height: displayHeight },
-          scaleFactors: { scaleX, scaleY },
-          scaledRegion,
-          actualRegion
-        }
-      });
-    }
-    
-    // Format region string as "x,y widthxheight"
-    const regionString = `${actualRegion.x},${actualRegion.y} ${actualRegion.width}x${actualRegion.height}`;
+    const result = await ffmpegService.calculateRegionFromDisplay(displayRegion, filePath, ffprobePath);
     
     console.log('Region calculation successful:', {
       displayRegion,
-      originalDimensions: { width: originalWidth, height: originalHeight },
-      rotation,
-      displayDimensions: { width: displayWidth, height: displayHeight },
-      scaleFactors: { scaleX, scaleY },
-      scaledRegion,
-      actualRegion,
-      regionString
+      ...result
     });
     
-    res.json({ 
-      regionString,
-      actualRegion,
-      originalDimensions: { width: originalWidth, height: originalHeight },
-      rotation,
-      displayDimensions: { width: displayWidth, height: displayHeight }
-    });
+    res.json(result);
     
   } catch (error) {
     console.error('Error calculating region:', error);
-    res.status(500).json({ error: error.message });
+    
+    if (error.message.includes('Invalid region dimensions')) {
+      res.status(400).json({ 
+        error: error.message,
+        debug: {
+          displayRegion: req.body.displayRegion
+        }
+      });
+    } else {
+      res.status(500).json({ error: error.message });
+    }
   }
 });
 
@@ -970,176 +614,47 @@ router.post('/execute-ffmpeg', async (req, res) => {
     const settings = await getAllSettings();
     const ffmpegPath = settings.ffmpegPath || 'ffmpeg';
     
-    // Parse the command to extract arguments
-    // Remove 'ffmpeg' from the beginning if present
-    let commandArgs = command.replace(/^ffmpeg\s+/, '').trim();
-    
-    // Split the command into arguments, respecting quotes
-    const args = [];
-    let currentArg = '';
-    let inQuotes = false;
-    let quoteChar = '';
-    
-    for (let i = 0; i < commandArgs.length; i++) {
-      const char = commandArgs[i];
-      
-      if ((char === '"' || char === "'") && !inQuotes) {
-        inQuotes = true;
-        quoteChar = char;
-      } else if (char === quoteChar && inQuotes) {
-        inQuotes = false;
-        quoteChar = '';
-      } else if (char === ' ' && !inQuotes) {
-        if (currentArg.trim()) {
-          args.push(currentArg.trim());
-          currentArg = '';
-        }
-      } else {
-        currentArg += char;
-      }
-    }
-    
-    if (currentArg.trim()) {
-      args.push(currentArg.trim());
-    }
-    
-    console.log('\n🎬 FFMPEG EXECUTION STARTED');
-    console.log('📂 Working Directory:', process.cwd());
-    console.log('🔧 FFmpeg Path:', ffmpegPath);
-    console.log('📝 Command:', command);
-    console.log('⚙️  Arguments:', args);
-    console.log('📥 Input File:', inputFile || 'Not specified');
-    console.log('📤 Output File:', outputFile || 'Not specified');
-    console.log('─'.repeat(60));
-    
-    // Execute FFmpeg command
-    const ffmpegProcess = spawn(ffmpegPath, args, {
-      stdio: ['pipe', 'pipe', 'pipe']
+    const result = await ffmpegService.execute({
+      command,
+      ffmpegPath,
+      inputFile,
+      outputFile,
+      executionId
     });
     
-    // Track the process if executionId is provided
-    if (executionId) {
-      activeProcesses.set(executionId, ffmpegProcess);
-    }
-    
-    let stdout = '';
-    let stderr = '';
-    let responseSent = false;
-    
-    ffmpegProcess.stdout.on('data', (data) => {
-      const output = data.toString();
-      stdout += output;
-      if (output.trim()) {
-        console.log('📤 FFmpeg stdout:', output.trim());
-      }
-    });
-    
-    ffmpegProcess.stderr.on('data', (data) => {
-      const output = data.toString();
-      stderr += output;
-      if (output.trim()) {
-        console.log('📋 FFmpeg stderr:', output.trim());
-      }
-    });
-    
-    ffmpegProcess.on('close', (code) => {
-      if (responseSent) return; // Prevent duplicate response
-      responseSent = true;
-      clearTimeout(timeoutId); // Clear the timeout
-      
-      // Clean up from active processes
-      if (executionId) {
-        activeProcesses.delete(executionId);
+    if (result.success) {
+      // Update current input file for the session if output was created
+      if (result.outputFile) {
+        const sessionId = getSessionId(req);
+        setCurrentInputFile(sessionId, result.outputFile);
+        console.log('🔄 Updated session input file for chaining');
       }
       
-      console.log('\n🏁 FFMPEG EXECUTION COMPLETED');
-      console.log('🔢 Exit Code:', code);
-      
-      if (code === 0) {
-        console.log('✅ Status: SUCCESS');
-        
-        // Check if output file was created
-        if (outputFile && fs.existsSync(outputFile)) {
-          const stats = fs.statSync(outputFile);
-          console.log('📁 Output File Created:', outputFile);
-          console.log('📊 File Size:', (stats.size / 1024 / 1024).toFixed(2), 'MB');
-          
-          // Update current input file for the session
-          const sessionId = getSessionId(req);
-          setCurrentInputFile(sessionId, outputFile);
-          console.log('🔄 Updated session input file for chaining');
-          
-          res.json({
-            success: true,
-            outputFile: outputFile,
-            outputSize: stats.size,
-            stdout: stdout,
-            stderr: stderr,
-            message: 'FFmpeg command executed successfully'
-          });
-        } else {
-          console.log('⚠️  No output file created');
-          res.json({
-            success: true,
-            stdout: stdout,
-            stderr: stderr,
-            message: 'FFmpeg command executed successfully (no output file created)'
-          });
-        }
-      } else {
-        console.log('❌ Status: FAILED');
-        console.log('💥 Error Details:', stderr.slice(-200)); // Last 200 chars of error
-        res.status(500).json({
-          error: `FFmpeg execution failed with code ${code}`,
-          stderr: stderr,
-          stdout: stdout
-        });
-      }
-      console.log('═'.repeat(60));
-    });
-    
-    ffmpegProcess.on('error', (error) => {
-      if (responseSent) return; // Prevent duplicate response
-      responseSent = true;
-      clearTimeout(timeoutId); // Clear the timeout
-      
-      // Clean up from active processes
-      if (executionId) {
-        activeProcesses.delete(executionId);
-      }
-      
-      console.log('\n💥 FFMPEG PROCESS ERROR');
-      console.log('❌ Error Type:', error.code || 'Unknown');
-      console.log('📝 Error Message:', error.message);
-      console.log('💡 Possible Causes:');
-      console.log('   - FFmpeg not installed or not in PATH');
-      console.log('   - Invalid FFmpeg path in settings');
-      console.log('   - Permissions issue');
-      console.log('═'.repeat(60));
-      
-      res.status(500).json({
-        error: 'Failed to start FFmpeg process: ' + error.message
+      res.json({
+        success: true,
+        outputFile: result.outputFile,
+        outputSize: result.outputSize,
+        stdout: result.stdout,
+        stderr: result.stderr,
+        message: result.outputFile ? 
+          'FFmpeg command executed successfully' : 
+          'FFmpeg command executed successfully (no output file created)'
       });
-    });
-    
-    // Set a timeout to prevent hanging
-    const timeoutId = setTimeout(() => {
-      if (!ffmpegProcess.killed && !responseSent) {
-        responseSent = true;
-        console.log('\n⏰ FFMPEG EXECUTION TIMEOUT');
-        console.log('🚫 Killing process after 60 seconds');
-        console.log('═'.repeat(60));
-        
-        ffmpegProcess.kill();
-        res.status(408).json({
-          error: 'FFmpeg execution timed out'
-        });
-      }
-    }, 60000); // 60 second timeout
-    
+    }
   } catch (error) {
     console.error('Error executing FFmpeg:', error);
-    res.status(500).json({ error: error.message });
+    
+    if (error.timeout) {
+      res.status(408).json({ error: error.message });
+    } else if (error.code !== undefined) {
+      res.status(500).json({
+        error: error.message,
+        stderr: error.stderr,
+        stdout: error.stdout
+      });
+    } else {
+      res.status(500).json({ error: error.message });
+    }
   }
 });
 
@@ -1152,65 +667,27 @@ router.post('/cancel-ffmpeg', async (req, res) => {
       return res.status(400).json({ error: 'No execution ID provided' });
     }
     
-    const ffmpegProcess = activeProcesses.get(executionId);
-    
-    if (!ffmpegProcess) {
-      return res.status(404).json({ error: 'No active process found for this execution' });
-    }
-    
-    console.log(`\n🚫 CANCELLING FFMPEG EXECUTION: ${executionId}`);
-    
-    // Kill the process
-    ffmpegProcess.kill('SIGTERM');
-    
-    // Clean up from active processes
-    activeProcesses.delete(executionId);
-    
-    console.log('✅ FFmpeg process terminated');
-    
-    res.json({ success: true, message: 'FFmpeg execution cancelled' });
+    const result = ffmpegService.cancel(executionId);
+    res.json(result);
     
   } catch (error) {
     console.error('Error cancelling FFmpeg:', error);
-    res.status(500).json({ error: error.message });
+    if (error.message.includes('No active process')) {
+      res.status(404).json({ error: error.message });
+    } else {
+      res.status(500).json({ error: error.message });
+    }
   }
 });
 
-// Check FFmpeg availability (override the existing one)
+// Check FFmpeg availability
 router.get('/ffmpeg-status', async (req, res) => {
   try {
     const settings = await getAllSettings();
     const ffmpegPath = settings.ffmpegPath || 'ffmpeg';
     
-    // Test if FFmpeg is available
-    const testProcess = spawn(ffmpegPath, ['-version'], {
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
-    
-    let responseSet = false;
-    
-    testProcess.on('close', (code) => {
-      if (!responseSet) {
-        responseSet = true;
-        res.json({ available: code === 0, path: ffmpegPath });
-      }
-    });
-    
-    testProcess.on('error', () => {
-      if (!responseSet) {
-        responseSet = true;
-        res.json({ available: false, path: ffmpegPath });
-      }
-    });
-    
-    // Timeout after 5 seconds
-    setTimeout(() => {
-      if (!responseSet) {
-        responseSet = true;
-        testProcess.kill();
-        res.json({ available: false, path: ffmpegPath });
-      }
-    }, 5000);
+    const result = await ffmpegService.checkAvailability(ffmpegPath);
+    res.json(result);
     
   } catch (error) {
     res.json({ available: false, error: error.message });
