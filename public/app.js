@@ -1485,27 +1485,44 @@ function initializeRegionSelection() {
 }
 
 function handleRegionMouseDown(e) {
-    const container = e.target.closest('.region-selection-container');
-    if (!container || e.target.tagName === 'BUTTON') return;
+    // Check if we're clicking on a button or input
+    if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
     
-    // Only allow selection if this container is in selection mode
-    if (!container.classList.contains('selection-mode')) return;
+    // Find the closest selection-mode container from the click point
+    let targetContainer = null;
+    
+    // First check if we clicked directly on a container
+    const directContainer = e.target.closest('.region-selection-container');
+    if (directContainer && directContainer.classList.contains('selection-mode')) {
+        targetContainer = directContainer;
+    } else {
+        // Check if we're clicking within a message that contains an active selection container
+        const messageElement = e.target.closest('.message');
+        if (messageElement) {
+            const containerInMessage = messageElement.querySelector('.region-selection-container.selection-mode');
+            if (containerInMessage) {
+                targetContainer = containerInMessage;
+            }
+        }
+    }
+    
+    if (!targetContainer) return;
     
     // Prevent default drag behavior
     e.preventDefault();
     
     isSelecting = true;
-    const rect = container.getBoundingClientRect();
+    const rect = targetContainer.getBoundingClientRect();
     selectionStart = {
         x: e.clientX - rect.left,
         y: e.clientY - rect.top,
-        container: container
+        container: targetContainer
     };
     
     // Clear visual selection in this container only
-    const overlay = container.querySelector('.region-selection-overlay');
+    const overlay = targetContainer.querySelector('.region-selection-overlay');
     overlay.innerHTML = '';
-    container.classList.remove('has-selection');
+    targetContainer.classList.remove('has-selection');
 }
 
 function handleRegionMouseMove(e) {

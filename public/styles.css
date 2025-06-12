@@ -1155,6 +1155,18 @@ h1 {
     cursor: crosshair;
 }
 
+/* When in selection mode, make the message containing the selection have crosshair cursor */
+.message:has(.region-selection-container.selection-mode) {
+    cursor: crosshair;
+}
+
+/* But keep normal cursor for interactive elements */
+.message:has(.region-selection-container.selection-mode) input,
+.message:has(.region-selection-container.selection-mode) textarea,
+.message:has(.region-selection-container.selection-mode) button {
+    cursor: pointer;
+}
+
 .region-selection-container.selection-mode img,
 .region-selection-container.selection-mode video {
     user-select: none;
