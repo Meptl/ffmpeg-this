@@ -1099,7 +1099,6 @@ h1 {
 
 .download-btn:hover {
     background-color: #5a6268;
-    transform: translateY(-1px);
 }
 
 .download-btn:active {
@@ -1197,7 +1196,6 @@ h1 {
 
 .region-select-btn:hover {
     background-color: #5a6268;
-    transform: translateY(-1px);
 }
 
 .region-select-btn.active {
