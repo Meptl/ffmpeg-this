@@ -174,41 +174,106 @@ document.addEventListener('drop', (e) => {
 
 // Add paste event listener for clipboard image support
 document.addEventListener('paste', async (e) => {
+    console.log('Paste event detected');
+    
     // Only handle paste when file upload container is visible
     if (fileUploadContainer.style.display === 'none') return;
     
     // Check if clipboard contains image data
+    if (!e.clipboardData || !e.clipboardData.items) {
+        console.log('No clipboardData available');
+        return;
+    }
+    
     const items = e.clipboardData.items;
-    for (const item of items) {
-        if (item.type.indexOf('image') !== -1) {
+    console.log('Clipboard items:', items.length);
+    
+    // Log all clipboard types first
+    const allTypes = [];
+    const allKinds = [];
+    for (let i = 0; i < items.length; i++) {
+        allTypes.push(items[i].type);
+        allKinds.push(items[i].kind);
+        console.log(`Item ${i}: type="${items[i].type}", kind="${items[i].kind}"`);
+    }
+    console.log('All types:', allTypes);
+    console.log('All kinds:', allKinds);
+    
+    // Check if we have any files at all
+    const fileItems = Array.from(items).filter(item => item.kind === 'file');
+    console.log('File items count:', fileItems.length);
+    
+    for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        
+        if (item.kind === 'file' && item.type.indexOf('image/') !== -1) {
             e.preventDefault();
+            console.log('Image found in clipboard');
             
-            // Get the image as a blob
-            const blob = item.getAsFile();
-            if (blob) {
-                // Create a File object with a name based on the type
-                const extension = blob.type.split('/')[1] || 'png';
-                const fileName = `pasted-image-${Date.now()}.${extension}`;
-                const file = new File([blob], fileName, { type: blob.type });
-                
-                // Create a DataTransfer object to set the files property
-                const dataTransfer = new DataTransfer();
-                dataTransfer.items.add(file);
-                fileInput.files = dataTransfer.files;
-                
-                // Trigger file upload
-                handleFileUpload();
-                
-                // Visual feedback
-                dropZone.classList.add('drag-over');
-                setTimeout(() => {
-                    dropZone.classList.remove('drag-over');
-                }, 300);
+            // Show spinner immediately
+            const fileLabel = document.querySelector('.file-label');
+            fileLabel.innerHTML = '<div class="upload-spinner"></div>';
+            fileLabel.classList.add('uploading');
+            
+            try {
+                const blob = item.getAsFile();
+                if (blob) {
+                    console.log(`Blob: ${blob.size} bytes, type: ${blob.type}`);
+                    
+                    // Add timestamp and size to log to verify it's a new image
+                    const timestamp = Date.now();
+                    console.log(`Processing at ${new Date(timestamp).toISOString()}, size: ${blob.size}`);
+                    
+                    processClipboardBlob(blob);
+                } else {
+                    console.error('Failed to get file from clipboard item');
+                    fileLabel.textContent = 'Select, drag or paste a file here';
+                    fileLabel.classList.remove('uploading');
+                }
+            } catch (error) {
+                console.error('Error processing clipboard:', error);
+                fileLabel.textContent = 'Select, drag or paste a file here';
+                fileLabel.classList.remove('uploading');
             }
-            break;
+            return; // Exit after processing first image
         }
     }
+    
+    console.log('No image found in clipboard');
 });
+
+// Process clipboard blob
+function processClipboardBlob(blob) {
+    // Add timestamp to filename to ensure uniqueness
+    const timestamp = Date.now();
+    const extension = blob.type.split('/')[1] || 'png';
+    const fileName = `pasted-image-${timestamp}.${extension}`;
+    
+    console.log('Processing blob:', {
+        size: blob.size,
+        type: blob.type,
+        fileName: fileName
+    });
+    
+    const file = new File([blob], fileName, { 
+        type: blob.type,
+        lastModified: timestamp
+    });
+    
+    // Create a DataTransfer object to set the files property
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(file);
+    fileInput.files = dataTransfer.files;
+    
+    // Trigger file upload
+    handleFileUpload();
+    
+    // Visual feedback
+    dropZone.classList.add('drag-over');
+    setTimeout(() => {
+        dropZone.classList.remove('drag-over');
+    }, 300);
+}
 
 // Load configured providers
 async function loadConfiguredProviders() {
@@ -380,26 +445,35 @@ async function handleFileUpload() {
     const file = fileInput.files[0];
     if (!file) return;
     
-    // Clear any previous status
-    fileStatus.textContent = '';
-    fileStatus.className = 'file-status';
+    console.log('handleFileUpload called, file:', file.name, 'size:', file.size);
+    
+    // Show loading spinner if not already showing
+    const fileLabel = document.querySelector('.file-label');
+    if (!fileLabel.classList.contains('uploading')) {
+        fileLabel.innerHTML = '<div class="upload-spinner"></div>';
+        fileLabel.classList.add('uploading');
+    }
     
     const formData = new FormData();
     formData.append('file', file);
     
     try {
+        console.log('Starting upload fetch request...');
+        const startTime = Date.now();
+        
         const response = await fetch('/api/upload-file', {
             method: 'POST',
             body: formData
         });
         
+        console.log(`Upload fetch completed in ${Date.now() - startTime}ms`);
         const data = await response.json();
         
         if (response.ok) {
             currentFile = data.file;
             initialFile = { ...data.file }; // Store initial file separately
             
-            // Don't show success status, just switch to chat interface
+            // Clear status and switch to chat interface
             fileStatus.textContent = '';
             fileStatus.className = 'file-status';
             
@@ -408,10 +482,17 @@ async function handleFileUpload() {
         } else {
             fileStatus.textContent = `❌ Error: ${data.error}`;
             fileStatus.className = 'file-status error';
+            // Restore label on error
+            fileLabel.textContent = 'Select, drag or paste a file here';
+            fileLabel.classList.remove('uploading');
         }
     } catch (error) {
         fileStatus.textContent = `❌ Error: ${error.message}`;
         fileStatus.className = 'file-status error';
+        // Restore label on error
+        const fileLabel = document.querySelector('.file-label');
+        fileLabel.textContent = 'Select, drag or paste a file here';
+        fileLabel.classList.remove('uploading');
     }
 }
 
