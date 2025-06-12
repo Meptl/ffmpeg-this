@@ -44,14 +44,7 @@ class FFmpegCommandExecutor {
     return new Promise((resolve, reject) => {
       const args = this.parseCommand(command);
       
-      console.log('\n🎬 FFMPEG EXECUTION STARTED');
-      console.log('📂 Working Directory:', process.cwd());
-      console.log('🔧 FFmpeg Path:', ffmpegPath);
-      console.log('📝 Command:', command);
-      console.log('⚙️  Arguments:', args);
-      console.log('📥 Input File:', inputFile || 'Not specified');
-      console.log('📤 Output File:', outputFile || 'Not specified');
-      console.log('─'.repeat(60));
+      console.log('FFmpeg Command:', command);
       
       const ffmpegProcess = spawn(ffmpegPath, args, {
         stdio: ['pipe', 'pipe', 'pipe']
@@ -69,7 +62,7 @@ class FFmpegCommandExecutor {
         const output = data.toString();
         stdout += output;
         if (output.trim()) {
-          console.log('📤 FFmpeg stdout:', output.trim());
+          console.log(output.trim());
         }
       });
       
@@ -77,7 +70,7 @@ class FFmpegCommandExecutor {
         const output = data.toString();
         stderr += output;
         if (output.trim()) {
-          console.log('📋 FFmpeg stderr:', output.trim());
+          console.log(output.trim());
         }
       });
       
@@ -90,12 +83,7 @@ class FFmpegCommandExecutor {
           this.activeProcesses.delete(executionId);
         }
         
-        console.log('\n🏁 FFMPEG EXECUTION COMPLETED');
-        console.log('🔢 Exit Code:', code);
-        
         if (code === 0) {
-          console.log('✅ Status: SUCCESS');
-          
           const result = {
             success: true,
             stdout,
@@ -105,19 +93,12 @@ class FFmpegCommandExecutor {
           
           if (outputFile && fs.existsSync(outputFile)) {
             const stats = fs.statSync(outputFile);
-            console.log('📁 Output File Created:', outputFile);
-            console.log('📊 File Size:', (stats.size / 1024 / 1024).toFixed(2), 'MB');
-            
             result.outputFile = outputFile;
             result.outputSize = stats.size;
-          } else {
-            console.log('⚠️  No output file created');
           }
           
           resolve(result);
         } else {
-          console.log('❌ Status: FAILED');
-          console.log('💥 Error Details:', stderr.slice(-200));
           reject({
             code,
             stdout,
@@ -125,7 +106,6 @@ class FFmpegCommandExecutor {
             message: `FFmpeg execution failed with code ${code}`
           });
         }
-        console.log('═'.repeat(60));
       });
       
       ffmpegProcess.on('error', (error) => {
@@ -137,14 +117,6 @@ class FFmpegCommandExecutor {
           this.activeProcesses.delete(executionId);
         }
         
-        console.log('\n💥 FFMPEG PROCESS ERROR');
-        console.log('❌ Error Type:', error.code || 'Unknown');
-        console.log('📝 Error Message:', error.message);
-        console.log('💡 Possible Causes:');
-        console.log('   - FFmpeg not installed or not in PATH');
-        console.log('   - Invalid FFmpeg path in settings');
-        console.log('   - Permissions issue');
-        console.log('═'.repeat(60));
         
         reject({
           error,
@@ -155,10 +127,6 @@ class FFmpegCommandExecutor {
       const timeoutId = setTimeout(() => {
         if (!ffmpegProcess.killed && !responseSent) {
           responseSent = true;
-          console.log('\n⏰ FFMPEG EXECUTION TIMEOUT');
-          console.log('🚫 Killing process after', timeout / 1000, 'seconds');
-          console.log('═'.repeat(60));
-          
           ffmpegProcess.kill();
           reject({
             message: 'FFmpeg execution timed out',
@@ -176,12 +144,8 @@ class FFmpegCommandExecutor {
       throw new Error('No active process found for this execution');
     }
     
-    console.log(`\n🚫 CANCELLING FFMPEG EXECUTION: ${executionId}`);
-    
     ffmpegProcess.kill('SIGTERM');
     this.activeProcesses.delete(executionId);
-    
-    console.log('✅ FFmpeg process terminated');
     
     return { success: true, message: 'FFmpeg execution cancelled' };
   }

@@ -36,8 +36,8 @@ const storage = multer.diskStorage({
 });
 
 const upload = multer({ 
-  storage: storage,
-  limits: { fileSize: 500 * 1024 * 1024 } // 500MB limit
+  storage: storage
+  // No file size limit for local usage
 });
 
 
@@ -305,7 +305,6 @@ Rules:
       }
     } catch (parseError) {
       // If JSON parsing fails, fall back to regular response
-      console.warn('Failed to parse structured response:', parseError.message);
     }
     
     res.json({ response });
@@ -412,7 +411,6 @@ router.post('/file-info', async (req, res) => {
         result.displayWidth = dimensions.displayWidth;
         result.displayHeight = dimensions.displayHeight;
       } catch (error) {
-        console.log('Could not get media dimensions:', error.message);
         // Continue without dimensions - not a critical error
       }
       
@@ -439,10 +437,6 @@ router.post('/calculate-region', async (req, res) => {
     
     const result = await ffmpegService.calculateRegionFromDisplay(displayRegion, filePath, ffprobePath);
     
-    console.log('Region calculation successful:', {
-      displayRegion,
-      ...result
-    });
     
     res.json(result);
     
@@ -475,34 +469,49 @@ router.get('/preconfigured-file', (req, res) => {
   }
 });
 
-// Upload file endpoint
-router.post('/upload-file', upload.single('file'), (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' });
+// Upload file endpoint with error handling
+router.post('/upload-file', (req, res) => {
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      // Handle multer errors
+      if (err instanceof multer.MulterError) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          return res.status(413).json({ 
+            error: 'File too large. Maximum file size is 500MB.' 
+          });
+        }
+        return res.status(400).json({ error: err.message });
+      }
+      return res.status(500).json({ error: err.message });
     }
 
-    const file = req.file;
-    
-    // Set this as the current input file for the session
-    const sessionId = getSessionId(req);
-    setCurrentInputFile(sessionId, file.path);
-
-    // Return file info
-    res.json({
-      success: true,
-      file: {
-        originalName: file.originalname,
-        fileName: file.filename,
-        filePath: file.path, // Add filePath for media embeds
-        path: file.path,
-        size: file.size,
-        mimetype: file.mimetype
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: 'No file uploaded' });
       }
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+
+      const file = req.file;
+      
+      // Set this as the current input file for the session
+      const sessionId = getSessionId(req);
+      setCurrentInputFile(sessionId, file.path);
+
+      // Return file info
+      res.json({
+        success: true,
+        file: {
+          originalName: file.originalname,
+          fileName: file.filename,
+          filePath: file.path, // Add filePath for media embeds
+          path: file.path,
+          size: file.size,
+          mimetype: file.mimetype
+        }
+      });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
 });
 
 // Serve media files endpoint
@@ -627,7 +636,6 @@ router.post('/execute-ffmpeg', async (req, res) => {
       if (result.outputFile) {
         const sessionId = getSessionId(req);
         setCurrentInputFile(sessionId, result.outputFile);
-        console.log('🔄 Updated session input file for chaining');
       }
       
       res.json({
