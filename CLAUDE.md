@@ -153,3 +153,4 @@ Stored in platform-specific directories via `src/storage.js`:
 - FFmpeg commands use placeholder replacement for security
 - The FFmpeg service provides a clean separation of concerns for all FFmpeg-related operations
 - All FFmpeg functionality is now centralized in `src/services/ffmpeg/` for better maintainability
+- Please don't use icons/emojis unless asked.

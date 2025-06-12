@@ -40,7 +40,7 @@ class FFmpegCommandExecutor {
     return args;
   }
 
-  async execute({ command, ffmpegPath = 'ffmpeg', inputFile, outputFile, executionId, timeout = 60000 }) {
+  async execute({ command, ffmpegPath = 'ffmpeg', inputFile, outputFile, executionId, onOutput }) {
     return new Promise((resolve, reject) => {
       const args = this.parseCommand(command);
       
@@ -63,6 +63,7 @@ class FFmpegCommandExecutor {
         stdout += output;
         if (output.trim()) {
           console.log(output.trim());
+          if (onOutput) onOutput('stdout', output);
         }
       });
       
@@ -71,13 +72,13 @@ class FFmpegCommandExecutor {
         stderr += output;
         if (output.trim()) {
           console.log(output.trim());
+          if (onOutput) onOutput('stderr', output);
         }
       });
       
       ffmpegProcess.on('close', (code) => {
         if (responseSent) return;
         responseSent = true;
-        clearTimeout(timeoutId);
         
         if (executionId) {
           this.activeProcesses.delete(executionId);
@@ -111,7 +112,6 @@ class FFmpegCommandExecutor {
       ffmpegProcess.on('error', (error) => {
         if (responseSent) return;
         responseSent = true;
-        clearTimeout(timeoutId);
         
         if (executionId) {
           this.activeProcesses.delete(executionId);
@@ -124,16 +124,6 @@ class FFmpegCommandExecutor {
         });
       });
       
-      const timeoutId = setTimeout(() => {
-        if (!ffmpegProcess.killed && !responseSent) {
-          responseSent = true;
-          ffmpegProcess.kill();
-          reject({
-            message: 'FFmpeg execution timed out',
-            timeout: true
-          });
-        }
-      }, timeout);
     });
   }
 

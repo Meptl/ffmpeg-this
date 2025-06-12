@@ -777,6 +777,10 @@ function addStructuredMessageToUI(type, rawContent, parsedResponse, executableRe
                             ⚡ Execute (don't ask again)
                         </button>` : ''}
                     </div>
+                    <div class="ffmpeg-output-container" id="output-${id}">
+                        <div class="ffmpeg-output-header">Output stream</div>
+                        <div class="ffmpeg-output" id="output-content-${id}"></div>
+                    </div>
                 </div>
             </div>`;
     }
@@ -1177,6 +1181,47 @@ async function executeFFmpegCommand(command, outputFile, messageId) {
     currentExecutionId = messageId;
     cancelBtn.style.display = 'inline-block';
     
+    // Clear output content but don't show container
+    clearFFmpegOutput(messageId);
+    
+    // Set up SSE connection for real-time output
+    const eventSource = new EventSource(`/api/stream-ffmpeg-output/${messageId}`);
+    
+    eventSource.onmessage = function(event) {
+        try {
+            const data = JSON.parse(event.data);
+            
+            if (data.type === 'output') {
+                appendFFmpegOutput(messageId, data.data);
+            } else if (data.type === 'complete') {
+                eventSource.close();
+                if (data.success && data.outputFile) {
+                    addOutputMediaMessage(data.outputFile, messageId);
+                    
+                    // Update current file for chaining
+                    const fileName = data.outputFile.split('/').pop();
+                    currentFile = {
+                        originalName: fileName,
+                        fileName: fileName,
+                        filePath: data.outputFile,
+                        path: data.outputFile,
+                        size: data.outputSize || 0,
+                        mimetype: 'application/octet-stream'
+                    };
+                }
+            } else if (data.type === 'error') {
+                eventSource.close();
+                appendFFmpegOutput(messageId, `Error: ${data.message}`);
+            }
+        } catch (e) {
+            console.error('Error parsing SSE data:', e);
+        }
+    };
+    
+    eventSource.onerror = function() {
+        eventSource.close();
+    };
+    
     try {
         const response = await fetch('/api/execute-ffmpeg', {
             method: 'POST',
@@ -1195,35 +1240,15 @@ async function executeFFmpegCommand(command, outputFile, messageId) {
             executeBtn.innerHTML = '✅ Executed Successfully';
             executeBtn.classList.remove('executing');
             executeBtn.classList.add('executed');
-            
-            // Add media embed as separate message if there's an output file
-            if (result.outputFile) {
-                addOutputMediaMessage(result.outputFile, messageId);
-            }
-            
-            // If there's an output file, update the current file for chaining
-            if (result.outputFile) {
-                // Update current file info for next operations
-                const fileName = result.outputFile.split('/').pop();
-                currentFile = {
-                    originalName: fileName,
-                    fileName: fileName,
-                    filePath: result.outputFile,
-                    path: result.outputFile,
-                    size: result.outputSize || 0,
-                    mimetype: 'application/octet-stream'
-                };
-                
-            }
-            
         } else {
             // Show error
             executeBtn.innerHTML = '❌ Execution Failed';
             executeBtn.classList.remove('executing');
             executeBtn.classList.add('error');
             
-            // Add error message
-            addMessage('error', `FFmpeg execution failed: ${result.error}`);
+            // Close SSE connection on error
+            eventSource.close();
+            appendFFmpegOutput(messageId, `Execution failed: ${result.error}`);
         }
         
     } catch (error) {
@@ -1231,13 +1256,34 @@ async function executeFFmpegCommand(command, outputFile, messageId) {
         executeBtn.classList.remove('executing');
         executeBtn.classList.add('error');
         
-        addMessage('error', `Error executing FFmpeg: ${error.message}`);
+        // Close SSE connection on error
+        eventSource.close();
+        appendFFmpegOutput(messageId, `Error: ${error.message}`);
     } finally {
         // Clear current execution and hide cancel button
         if (currentExecutionId === messageId) {
             currentExecutionId = null;
             cancelBtn.style.display = 'none';
         }
+    }
+}
+
+
+
+// Clear FFmpeg output content
+function clearFFmpegOutput(messageId) {
+    const outputContent = document.getElementById(`output-content-${messageId}`);
+    if (outputContent) {
+        outputContent.innerHTML = '';
+    }
+}
+
+// Append FFmpeg output content
+function appendFFmpegOutput(messageId, content) {
+    const outputContent = document.getElementById(`output-content-${messageId}`);
+    if (outputContent) {
+        outputContent.innerHTML += content.replace(/\n/g, '<br>').replace(/ /g, '&nbsp;');
+        outputContent.scrollTop = outputContent.scrollHeight;
     }
 }
 
@@ -1680,6 +1726,7 @@ document.addEventListener('DOMContentLoaded', initializeRegionSelection);
 
 // Also initialize on dynamic content
 initializeRegionSelection();
+
 
 // Image copy functionality
 let hoveredMessage = null;

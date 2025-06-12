@@ -610,6 +610,38 @@ router.get('/serve-file', (req, res) => {
   }
 });
 
+// Global map to store SSE connections
+const sseConnections = new Map();
+
+// Server-Sent Events endpoint for FFmpeg output streaming
+router.get('/stream-ffmpeg-output/:executionId', (req, res) => {
+  const { executionId } = req.params;
+  
+  // Set SSE headers
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Cache-Control'
+  });
+  
+  // Store the connection
+  sseConnections.set(executionId, res);
+  
+  // Send initial connection message
+  res.write(`data: ${JSON.stringify({ type: 'connected' })}\n\n`);
+  
+  // Handle client disconnect
+  req.on('close', () => {
+    sseConnections.delete(executionId);
+  });
+  
+  req.on('aborted', () => {
+    sseConnections.delete(executionId);
+  });
+});
+
 // Execute FFmpeg command endpoint
 router.post('/execute-ffmpeg', async (req, res) => {
   try {
@@ -623,13 +655,44 @@ router.post('/execute-ffmpeg', async (req, res) => {
     const settings = await getAllSettings();
     const ffmpegPath = settings.ffmpegPath || 'ffmpeg';
     
+    // Set up output streaming callback
+    const onOutput = (type, data) => {
+      const sseConnection = sseConnections.get(executionId);
+      if (sseConnection) {
+        try {
+          sseConnection.write(`data: ${JSON.stringify({ type: 'output', stream: type, data })}\n\n`);
+        } catch (error) {
+          // Connection might be closed, remove it
+          sseConnections.delete(executionId);
+        }
+      }
+    };
+    
     const result = await ffmpegService.execute({
       command,
       ffmpegPath,
       inputFile,
       outputFile,
-      executionId
+      executionId,
+      onOutput
     });
+    
+    // Send completion message via SSE
+    const sseConnection = sseConnections.get(executionId);
+    if (sseConnection) {
+      try {
+        sseConnection.write(`data: ${JSON.stringify({ 
+          type: 'complete', 
+          success: result.success,
+          outputFile: result.outputFile,
+          outputSize: result.outputSize
+        })}\n\n`);
+        sseConnection.end();
+      } catch (error) {
+        // Connection already closed
+      }
+      sseConnections.delete(executionId);
+    }
     
     if (result.success) {
       // Update current input file for the session if output was created
@@ -652,9 +715,24 @@ router.post('/execute-ffmpeg', async (req, res) => {
   } catch (error) {
     console.error('Error executing FFmpeg:', error);
     
-    if (error.timeout) {
-      res.status(408).json({ error: error.message });
-    } else if (error.code !== undefined) {
+    // Send error message via SSE
+    const sseConnection = sseConnections.get(executionId);
+    if (sseConnection) {
+      try {
+        sseConnection.write(`data: ${JSON.stringify({ 
+          type: 'error', 
+          message: error.message,
+          stderr: error.stderr,
+          stdout: error.stdout
+        })}\n\n`);
+        sseConnection.end();
+      } catch (sseError) {
+        // Connection already closed
+      }
+      sseConnections.delete(executionId);
+    }
+    
+    if (error.code !== undefined) {
       res.status(500).json({
         error: error.message,
         stderr: error.stderr,
