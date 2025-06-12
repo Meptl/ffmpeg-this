@@ -27,7 +27,6 @@ const closeModal = document.querySelector('.close');
 const saveSettingsBtn = document.getElementById('save-settings');
 const ffmpegStatus = document.getElementById('ffmpeg-status');
 // Remove reference to main UI toggle since it's been moved to settings
-const cancelBtn = document.getElementById('cancel-btn');
 
 // File upload elements
 const fileInput = document.getElementById('file-input');
@@ -97,7 +96,6 @@ sendBtn.addEventListener('click', sendMessage);
 messageInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') sendMessage();
 });
-cancelBtn.addEventListener('click', cancelExecution);
 providerSelect.addEventListener('change', (e) => {
     currentProvider = e.target.value;
 });
@@ -773,6 +771,9 @@ function addStructuredMessageToUI(type, rawContent, parsedResponse, executableRe
                         <button class="execute-btn" data-command="${commandToShow.replace(/"/g, '&quot;')}" data-output="${executableResponse ? executableResponse.output_file.replace(/"/g, '&quot;') : ''}" data-msgid="${id}" onclick="executeFFmpegCommand(this.getAttribute('data-command'), this.getAttribute('data-output'), this.getAttribute('data-msgid'))">
                             ▶️ Execute
                         </button>
+                        <button class="cancel-execution-btn" data-msgid="${id}" onclick="cancelFFmpegExecution(this.getAttribute('data-msgid'))" style="display: none;">
+                            🛑 Cancel
+                        </button>
                         ${!autoExecuteCommands ? `<button class="execute-auto-btn" data-command="${commandToShow.replace(/"/g, '&quot;')}" data-output="${executableResponse ? executableResponse.output_file.replace(/"/g, '&quot;') : ''}" data-msgid="${id}" onclick="executeAndToggleAuto(this.getAttribute('data-command'), this.getAttribute('data-output'), this.getAttribute('data-msgid'))">
                             ⚡ Execute (don't ask again)
                         </button>` : ''}
@@ -1177,9 +1178,18 @@ async function executeFFmpegCommand(command, outputFile, messageId) {
     executeBtn.innerHTML = '⏳ Executing...';
     executeBtn.classList.add('executing');
     
-    // Set current execution and show cancel button
+    // Set current execution and show per-command cancel button
     currentExecutionId = messageId;
-    cancelBtn.style.display = 'inline-block';
+    const cancelExecutionBtn = document.querySelector(`#msg-${messageId.toString().replace(/\./g, '\\.')} .cancel-execution-btn`);
+    if (cancelExecutionBtn) {
+        cancelExecutionBtn.style.display = 'inline-block';
+    }
+    
+    // Hide the "Execute (don't ask again)" button after clicking execute
+    const executeAutoBtn = document.querySelector(`#msg-${messageId.toString().replace(/\./g, '\\.')} .execute-auto-btn`);
+    if (executeAutoBtn) {
+        executeAutoBtn.style.display = 'none';
+    }
     
     // Clear output content but don't show container
     clearFFmpegOutput(messageId);
@@ -1212,6 +1222,9 @@ async function executeFFmpegCommand(command, outputFile, messageId) {
             } else if (data.type === 'error') {
                 eventSource.close();
                 appendFFmpegOutput(messageId, `Error: ${data.message}`);
+            } else if (data.type === 'cancelled') {
+                eventSource.close();
+                appendFFmpegOutput(messageId, `Cancelled: ${data.message}`);
             }
         } catch (e) {
             console.error('Error parsing SSE data:', e);
@@ -1251,6 +1264,11 @@ async function executeFFmpegCommand(command, outputFile, messageId) {
             appendFFmpegOutput(messageId, `Execution failed: ${result.error}`);
         }
         
+        // Hide cancel button
+        if (cancelExecutionBtn) {
+            cancelExecutionBtn.style.display = 'none';
+        }
+        
     } catch (error) {
         executeBtn.innerHTML = '❌ Execution Failed';
         executeBtn.classList.remove('executing');
@@ -1259,11 +1277,15 @@ async function executeFFmpegCommand(command, outputFile, messageId) {
         // Close SSE connection on error
         eventSource.close();
         appendFFmpegOutput(messageId, `Error: ${error.message}`);
+        
+        // Hide cancel button
+        if (cancelExecutionBtn) {
+            cancelExecutionBtn.style.display = 'none';
+        }
     } finally {
-        // Clear current execution and hide cancel button
+        // Clear current execution
         if (currentExecutionId === messageId) {
             currentExecutionId = null;
-            cancelBtn.style.display = 'none';
         }
     }
 }
@@ -1287,7 +1309,48 @@ function appendFFmpegOutput(messageId, content) {
     }
 }
 
-// Cancel execution function
+// Cancel specific FFmpeg execution (called from per-command cancel button)
+async function cancelFFmpegExecution(messageId) {
+    if (!messageId) return;
+    
+    try {
+        const response = await fetch('/api/cancel-ffmpeg', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                executionId: messageId
+            })
+        });
+        
+        if (response.ok) {
+            appendFFmpegOutput(messageId, '\n🚫 FFmpeg execution cancelled');
+            
+            // Update button states
+            const escapedId = messageId.toString().replace(/\./g, '\\.');
+            const executeBtn = document.querySelector(`#msg-${escapedId} .execute-btn`);
+            const cancelBtn = document.querySelector(`#msg-${escapedId} .cancel-execution-btn`);
+            
+            if (executeBtn) {
+                executeBtn.innerHTML = '🚫 Cancelled';
+                executeBtn.classList.remove('executing');
+                executeBtn.classList.add('cancelled');
+            }
+            
+            if (cancelBtn) {
+                cancelBtn.style.display = 'none';
+            }
+        }
+    } catch (error) {
+        appendFFmpegOutput(messageId, `\nError cancelling execution: ${error.message}`);
+    }
+    
+    // Clear execution state if this was the current execution
+    if (currentExecutionId === messageId) {
+        currentExecutionId = null;
+    }
+}
+
+// Cancel execution function (legacy - for global cancel button)
 async function cancelExecution() {
     if (!currentExecutionId) return;
     
@@ -1719,6 +1782,7 @@ function toggleRegionSelectMode(button) {
 // Make functions globally available
 window.clearRegionSelection = clearRegionSelection;
 window.toggleRegionSelectMode = toggleRegionSelectMode;
+window.cancelFFmpegExecution = cancelFFmpegExecution;
 
 
 // Initialize region selection when DOM is ready

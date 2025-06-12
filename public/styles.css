@@ -1322,3 +1322,23 @@ h1 {
     font-style: italic;
 }
 
+.cancel-execution-btn {
+    background-color: #dc3545;
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    margin-left: 0.5rem;
+}
+
+.cancel-execution-btn:hover {
+    background-color: #c82333;
+}
+
+.execute-btn.cancelled {
+    background-color: #6c757d;
+    color: white;
+}
+

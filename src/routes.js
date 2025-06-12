@@ -613,6 +613,9 @@ router.get('/serve-file', (req, res) => {
 // Global map to store SSE connections
 const sseConnections = new Map();
 
+// Global set to track cancelled executions
+const cancelledExecutions = new Set();
+
 // Server-Sent Events endpoint for FFmpeg output streaming
 router.get('/stream-ffmpeg-output/:executionId', (req, res) => {
   const { executionId } = req.params;
@@ -646,6 +649,8 @@ router.get('/stream-ffmpeg-output/:executionId', (req, res) => {
 router.post('/execute-ffmpeg', async (req, res) => {
   try {
     const { command, inputFile, outputFile, executionId } = req.body;
+    
+    console.log(`Starting execution with ID: ${executionId} (type: ${typeof executionId})`);
     
     if (!command) {
       return res.status(400).json({ error: 'No command provided' });
@@ -695,11 +700,22 @@ router.post('/execute-ffmpeg', async (req, res) => {
     }
     
     if (result.success) {
-      // Update current input file for the session if output was created
-      if (result.outputFile) {
+      // Update current input file for the session if output was created AND execution wasn't cancelled
+      const execIdStr = String(executionId);
+      const wasCancelled = cancelledExecutions.has(execIdStr);
+      console.log(`Execution ${execIdStr} (type: ${typeof execIdStr}): success=${result.success}, outputFile=${result.outputFile}, wasCancelled=${wasCancelled}`);
+      console.log(`Cancelled executions contains: ${Array.from(cancelledExecutions)}`);
+      
+      if (result.outputFile && !wasCancelled) {
         const sessionId = getSessionId(req);
+        console.log(`Updating session input file to: ${result.outputFile}`);
         setCurrentInputFile(sessionId, result.outputFile);
+      } else {
+        console.log(`NOT updating session input file. outputFile=${result.outputFile}, wasCancelled=${wasCancelled}`);
       }
+      
+      // Clean up cancelled execution tracking
+      cancelledExecutions.delete(execIdStr);
       
       res.json({
         success: true,
@@ -716,7 +732,7 @@ router.post('/execute-ffmpeg', async (req, res) => {
     console.error('Error executing FFmpeg:', error);
     
     // Send error message via SSE
-    const sseConnection = sseConnections.get(executionId);
+    const sseConnection = sseConnections.get(req.body.executionId);
     if (sseConnection) {
       try {
         sseConnection.write(`data: ${JSON.stringify({ 
@@ -729,8 +745,11 @@ router.post('/execute-ffmpeg', async (req, res) => {
       } catch (sseError) {
         // Connection already closed
       }
-      sseConnections.delete(executionId);
+      sseConnections.delete(req.body.executionId);
     }
+    
+    // Clean up cancelled execution tracking
+    cancelledExecutions.delete(String(req.body.executionId));
     
     if (error.code !== undefined) {
       res.status(500).json({
@@ -753,7 +772,29 @@ router.post('/cancel-ffmpeg', async (req, res) => {
       return res.status(400).json({ error: 'No execution ID provided' });
     }
     
+    // Mark execution as cancelled
+    const execIdStr = String(executionId);
+    console.log(`Marking execution ${execIdStr} (type: ${typeof execIdStr}) as cancelled`);
+    cancelledExecutions.add(execIdStr);
+    console.log(`Cancelled executions now contains: ${Array.from(cancelledExecutions)}`);
+    
     const result = ffmpegService.cancel(executionId);
+    
+    // Send cancellation message via SSE
+    const sseConnection = sseConnections.get(executionId);
+    if (sseConnection) {
+      try {
+        sseConnection.write(`data: ${JSON.stringify({ 
+          type: 'cancelled', 
+          message: 'Execution cancelled by user'
+        })}\n\n`);
+        sseConnection.end();
+      } catch (error) {
+        // Connection already closed
+      }
+      sseConnections.delete(executionId);
+    }
+    
     res.json(result);
     
   } catch (error) {
