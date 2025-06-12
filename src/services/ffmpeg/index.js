@@ -37,8 +37,8 @@ class FFmpegService {
     return this.regionCalculator.transformCropCoordinates(x, y, width, height, videoWidth, videoHeight, rotation);
   }
 
-  calculateRegion(displayRegion, originalDimensions, rotation) {
-    return this.regionCalculator.calculateRegion(displayRegion, originalDimensions, rotation);
+  calculateRegion(displayRegion, mediaDimensions) {
+    return this.regionCalculator.calculateRegion(displayRegion, mediaDimensions);
   }
 
   validateRegion(region, dimensions) {
@@ -60,10 +60,7 @@ class FFmpegService {
   async calculateRegionFromDisplay(displayRegion, filePath, ffprobePath) {
     const dimensions = await this.getMediaDimensions(filePath, ffprobePath);
     
-    const result = this.calculateRegion(displayRegion, {
-      width: dimensions.width,
-      height: dimensions.height
-    }, dimensions.rotation);
+    const result = this.calculateRegion(displayRegion, dimensions);
     
     const isValid = this.validateRegion(result.actualRegion, {
       width: dimensions.width,
@@ -82,7 +79,11 @@ class FFmpegService {
         height: dimensions.height
       },
       rotation: dimensions.rotation,
-      displayDimensions: result.displayDimensions
+      displayDimensions: result.displayDimensions,
+      sar: dimensions.sar,
+      dar: dimensions.dar,
+      sarValue: dimensions.sarValue,
+      darValue: dimensions.darValue
     };
   }
 }

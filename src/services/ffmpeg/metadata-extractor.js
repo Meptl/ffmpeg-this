@@ -118,7 +118,7 @@ class FFmpegMetadataExtractor {
       const ffprobeProcess = spawn(ffprobePath, [
         '-v', 'error',
         '-select_streams', 'v:0',
-        '-show_entries', 'stream=width,height',
+        '-show_entries', 'stream=width,height,sample_aspect_ratio,display_aspect_ratio',
         '-of', 'json',
         filePath
       ]);
@@ -139,26 +139,79 @@ class FFmpegMetadataExtractor {
           try {
             const probeResult = JSON.parse(stdout);
             if (probeResult.streams && probeResult.streams[0]) {
-              const width = probeResult.streams[0].width;
-              const height = probeResult.streams[0].height;
+              const stream = probeResult.streams[0];
+              const width = stream.width;
+              const height = stream.height;
               
+              // Extract SAR (Sample/Pixel Aspect Ratio) and DAR (Display Aspect Ratio)
+              let sar = stream.sample_aspect_ratio || '1:1';
+              let dar = stream.display_aspect_ratio;
+              
+              // Parse aspect ratios to numeric values
+              const parseRatio = (ratio) => {
+                if (!ratio || ratio === 'N/A') return null;
+                const parts = ratio.split(':');
+                if (parts.length === 2) {
+                  return parseFloat(parts[0]) / parseFloat(parts[1]);
+                }
+                return null;
+              };
+              
+              const sarValue = parseRatio(sar) || 1;
+              const darValue = parseRatio(dar);
+              
+              // Calculate true display dimensions
+              let trueDisplayWidth, trueDisplayHeight;
+              
+              if (darValue) {
+                // If we have DAR, use it to calculate display dimensions
+                const storageAspectRatio = width / height;
+                const aspectRatioMultiplier = darValue / storageAspectRatio;
+                
+                if (aspectRatioMultiplier > 1) {
+                  // Video is wider than storage suggests
+                  trueDisplayWidth = width * aspectRatioMultiplier;
+                  trueDisplayHeight = height;
+                } else {
+                  // Video is taller than storage suggests
+                  trueDisplayWidth = width;
+                  trueDisplayHeight = height / aspectRatioMultiplier;
+                }
+              } else if (sarValue !== 1) {
+                // If we only have SAR/PAR, use it
+                trueDisplayWidth = width * sarValue;
+                trueDisplayHeight = height;
+              } else {
+                // No aspect ratio correction needed
+                trueDisplayWidth = width;
+                trueDisplayHeight = height;
+              }
+              
+              // Get rotation
               const rotation = await this.getVideoRotation(filePath, ffprobePath);
               
+              // Apply rotation to display dimensions
               let displayWidth, displayHeight;
               if (rotation === 90 || rotation === -90) {
-                displayWidth = height;
-                displayHeight = width;
+                displayWidth = trueDisplayHeight;
+                displayHeight = trueDisplayWidth;
               } else {
-                displayWidth = width;
-                displayHeight = height;
+                displayWidth = trueDisplayWidth;
+                displayHeight = trueDisplayHeight;
               }
               
               resolve({
                 width,
                 height,
                 rotation,
-                displayWidth,
-                displayHeight
+                displayWidth: Math.round(displayWidth),
+                displayHeight: Math.round(displayHeight),
+                sar,
+                dar,
+                sarValue,
+                darValue,
+                storageAspectRatio: width / height,
+                displayAspectRatio: trueDisplayWidth / trueDisplayHeight
               });
             } else {
               reject(new Error('No video stream found'));
