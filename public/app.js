@@ -172,6 +172,44 @@ document.addEventListener('drop', (e) => {
     e.preventDefault();
 });
 
+// Add paste event listener for clipboard image support
+document.addEventListener('paste', async (e) => {
+    // Only handle paste when file upload container is visible
+    if (fileUploadContainer.style.display === 'none') return;
+    
+    // Check if clipboard contains image data
+    const items = e.clipboardData.items;
+    for (const item of items) {
+        if (item.type.indexOf('image') !== -1) {
+            e.preventDefault();
+            
+            // Get the image as a blob
+            const blob = item.getAsFile();
+            if (blob) {
+                // Create a File object with a name based on the type
+                const extension = blob.type.split('/')[1] || 'png';
+                const fileName = `pasted-image-${Date.now()}.${extension}`;
+                const file = new File([blob], fileName, { type: blob.type });
+                
+                // Create a DataTransfer object to set the files property
+                const dataTransfer = new DataTransfer();
+                dataTransfer.items.add(file);
+                fileInput.files = dataTransfer.files;
+                
+                // Trigger file upload
+                handleFileUpload();
+                
+                // Visual feedback
+                dropZone.classList.add('drag-over');
+                setTimeout(() => {
+                    dropZone.classList.remove('drag-over');
+                }, 300);
+            }
+            break;
+        }
+    }
+});
+
 // Load configured providers
 async function loadConfiguredProviders() {
     try {
@@ -1606,3 +1644,175 @@ document.addEventListener('DOMContentLoaded', initializeRegionSelection);
 
 // Also initialize on dynamic content
 initializeRegionSelection();
+
+// Image copy functionality
+let hoveredMessage = null;
+let hoveredImage = null;
+
+// Track hovered messages that contain images
+document.addEventListener('mouseover', (e) => {
+    // Check if hovering over a message that contains media
+    const message = e.target.closest('.message');
+    if (message) {
+        const mediaElement = message.querySelector('.media-embed img, .media-embed video');
+        if (mediaElement) {
+            hoveredMessage = message;
+            hoveredImage = mediaElement;
+            // Add subtle hover indication to the message
+            message.style.outline = '2px solid rgba(0, 123, 255, 0.3)';
+            message.style.outlineOffset = '2px';
+        }
+    }
+});
+
+document.addEventListener('mouseout', (e) => {
+    // Remove hover indication when leaving a message
+    const message = e.target.closest('.message');
+    if (message && message === hoveredMessage) {
+        // Check if we're moving to another element within the same message
+        if (!e.relatedTarget || !message.contains(e.relatedTarget)) {
+            message.style.outline = '';
+            message.style.outlineOffset = '';
+            hoveredMessage = null;
+            hoveredImage = null;
+        }
+    }
+});
+
+// Handle Ctrl+C to copy hovered image
+document.addEventListener('keydown', async (e) => {
+    // Check for Ctrl+C (or Cmd+C on Mac)
+    if ((e.ctrlKey || e.metaKey) && e.key === 'c' && hoveredImage) {
+        // Don't interfere with text selection copying
+        const selection = window.getSelection();
+        if (selection && selection.toString().trim()) {
+            return;
+        }
+        
+        e.preventDefault();
+        
+        try {
+            // Get the source URL
+            const src = hoveredImage.src || hoveredImage.currentSrc;
+            if (!src) return;
+            
+            // For video elements, we'll copy the current frame
+            if (hoveredImage.tagName === 'VIDEO') {
+                // Create a canvas to capture the current video frame
+                const canvas = document.createElement('canvas');
+                canvas.width = hoveredImage.videoWidth;
+                canvas.height = hoveredImage.videoHeight;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(hoveredImage, 0, 0);
+                
+                // Convert canvas to blob
+                canvas.toBlob(async (blob) => {
+                    if (blob) {
+                        await copyBlobToClipboard(blob);
+                        showCopyFeedback(hoveredImage, 'Video frame copied!');
+                    }
+                }, 'image/png');
+            } else {
+                // For images, fetch and copy
+                const response = await fetch(src);
+                const blob = await response.blob();
+                await copyBlobToClipboard(blob);
+                showCopyFeedback(hoveredImage, 'Image copied!');
+            }
+        } catch (error) {
+            console.error('Failed to copy image:', error);
+            showCopyFeedback(hoveredImage, 'Copy failed!', true);
+        }
+    }
+});
+
+// Copy blob to clipboard
+async function copyBlobToClipboard(blob) {
+    // Firefox on Linux has limited support for clipboard image types
+    // Convert to PNG which has better support
+    if (blob.type !== 'image/png') {
+        blob = await convertBlobToPng(blob);
+    }
+    
+    if (navigator.clipboard && window.ClipboardItem) {
+        try {
+            // Modern clipboard API
+            const item = new ClipboardItem({ [blob.type]: blob });
+            await navigator.clipboard.write([item]);
+        } catch (error) {
+            // Fallback for Firefox - try with just PNG
+            if (blob.type !== 'image/png') {
+                const pngBlob = await convertBlobToPng(blob);
+                const item = new ClipboardItem({ 'image/png': pngBlob });
+                await navigator.clipboard.write([item]);
+            } else {
+                throw error;
+            }
+        }
+    } else {
+        throw new Error('Clipboard API not supported');
+    }
+}
+
+// Convert any image blob to PNG
+async function convertBlobToPng(blob) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            canvas.toBlob(resolve, 'image/png');
+        };
+        img.onerror = reject;
+        img.src = URL.createObjectURL(blob);
+    });
+}
+
+// Show visual feedback when copying
+function showCopyFeedback(element, message, isError = false) {
+    // Create feedback element
+    const feedback = document.createElement('div');
+    feedback.className = 'copy-feedback';
+    feedback.textContent = message;
+    feedback.style.cssText = `
+        position: absolute;
+        background: ${isError ? '#dc3545' : '#28a745'};
+        color: white;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        pointer-events: none;
+        z-index: 1000;
+        animation: fadeInOut 1.5s ease-in-out;
+    `;
+    
+    // Position feedback near the element
+    const rect = element.getBoundingClientRect();
+    feedback.style.left = rect.left + 'px';
+    feedback.style.top = (rect.top - 30) + 'px';
+    
+    document.body.appendChild(feedback);
+    
+    // Remove after animation
+    setTimeout(() => {
+        feedback.remove();
+    }, 1500);
+}
+
+// Add CSS animation for feedback
+if (!document.getElementById('copy-feedback-styles')) {
+    const style = document.createElement('style');
+    style.id = 'copy-feedback-styles';
+    style.textContent = `
+        @keyframes fadeInOut {
+            0% { opacity: 0; transform: translateY(10px); }
+            20% { opacity: 1; transform: translateY(0); }
+            80% { opacity: 1; transform: translateY(0); }
+            100% { opacity: 0; transform: translateY(-10px); }
+        }
+    `;
+    document.head.appendChild(style);
+}
