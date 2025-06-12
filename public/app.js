@@ -174,64 +174,43 @@ document.addEventListener('drop', (e) => {
 
 // Add paste event listener for clipboard image support
 document.addEventListener('paste', async (e) => {
-    console.log('Paste event detected');
-    
     // Only handle paste when file upload container is visible
     if (fileUploadContainer.style.display === 'none') return;
     
     // Check if clipboard contains image data
     if (!e.clipboardData || !e.clipboardData.items) {
-        console.log('No clipboardData available');
         return;
     }
     
     const items = e.clipboardData.items;
-    console.log('Clipboard items:', items.length);
-    
-    // Log all clipboard types first
-    const allTypes = [];
-    const allKinds = [];
-    for (let i = 0; i < items.length; i++) {
-        allTypes.push(items[i].type);
-        allKinds.push(items[i].kind);
-        console.log(`Item ${i}: type="${items[i].type}", kind="${items[i].kind}"`);
-    }
-    console.log('All types:', allTypes);
-    console.log('All kinds:', allKinds);
     
     // Check if we have any files at all
     const fileItems = Array.from(items).filter(item => item.kind === 'file');
-    console.log('File items count:', fileItems.length);
+    
+    // Show spinner immediately if we have any file items
+    if (fileItems.length > 0) {
+        const fileLabel = document.querySelector('.file-label');
+        fileLabel.innerHTML = '<div class="upload-spinner"></div>';
+        fileLabel.classList.add('uploading');
+    }
     
     for (let i = 0; i < items.length; i++) {
         const item = items[i];
         
         if (item.kind === 'file' && item.type.indexOf('image/') !== -1) {
             e.preventDefault();
-            console.log('Image found in clipboard');
-            
-            // Show spinner immediately
-            const fileLabel = document.querySelector('.file-label');
-            fileLabel.innerHTML = '<div class="upload-spinner"></div>';
-            fileLabel.classList.add('uploading');
             
             try {
                 const blob = item.getAsFile();
                 if (blob) {
-                    console.log(`Blob: ${blob.size} bytes, type: ${blob.type}`);
-                    
-                    // Add timestamp and size to log to verify it's a new image
-                    const timestamp = Date.now();
-                    console.log(`Processing at ${new Date(timestamp).toISOString()}, size: ${blob.size}`);
-                    
                     processClipboardBlob(blob);
                 } else {
-                    console.error('Failed to get file from clipboard item');
+                    const fileLabel = document.querySelector('.file-label');
                     fileLabel.textContent = 'Select, drag or paste a file here';
                     fileLabel.classList.remove('uploading');
                 }
             } catch (error) {
-                console.error('Error processing clipboard:', error);
+                const fileLabel = document.querySelector('.file-label');
                 fileLabel.textContent = 'Select, drag or paste a file here';
                 fileLabel.classList.remove('uploading');
             }
@@ -239,7 +218,12 @@ document.addEventListener('paste', async (e) => {
         }
     }
     
-    console.log('No image found in clipboard');
+    // If we showed spinner but found no images, hide it
+    if (fileItems.length > 0) {
+        const fileLabel = document.querySelector('.file-label');
+        fileLabel.textContent = 'Select, drag or paste a file here';
+        fileLabel.classList.remove('uploading');
+    }
 });
 
 // Process clipboard blob
@@ -248,12 +232,6 @@ function processClipboardBlob(blob) {
     const timestamp = Date.now();
     const extension = blob.type.split('/')[1] || 'png';
     const fileName = `pasted-image-${timestamp}.${extension}`;
-    
-    console.log('Processing blob:', {
-        size: blob.size,
-        type: blob.type,
-        fileName: fileName
-    });
     
     const file = new File([blob], fileName, { 
         type: blob.type,
@@ -313,7 +291,6 @@ async function loadConfiguredProviders() {
             });
         }
     } catch (error) {
-        console.error('Error loading providers:', error);
         addMessage('error', 'Failed to load configured providers');
     }
 }
@@ -325,7 +302,6 @@ async function loadPersistentSettings() {
         const settings = await response.json();
         return settings;
     } catch (error) {
-        console.error('Error loading persistent settings:', error);
     }
 }
 
@@ -336,12 +312,10 @@ async function checkPreConfiguredFile() {
         const data = await response.json();
         
         if (data.file) {
-            console.log('Pre-configured file found:', data.file.originalName);
             return data.file;
         }
         return null;
     } catch (error) {
-        console.error('Error checking pre-configured file:', error);
         return null;
     }
 }
@@ -445,8 +419,6 @@ async function handleFileUpload() {
     const file = fileInput.files[0];
     if (!file) return;
     
-    console.log('handleFileUpload called, file:', file.name, 'size:', file.size);
-    
     // Show loading spinner if not already showing
     const fileLabel = document.querySelector('.file-label');
     if (!fileLabel.classList.contains('uploading')) {
@@ -458,15 +430,11 @@ async function handleFileUpload() {
     formData.append('file', file);
     
     try {
-        console.log('Starting upload fetch request...');
-        const startTime = Date.now();
-        
         const response = await fetch('/api/upload-file', {
             method: 'POST',
             body: formData
         });
         
-        console.log(`Upload fetch completed in ${Date.now() - startTime}ms`);
         const data = await response.json();
         
         if (response.ok) {
@@ -507,14 +475,10 @@ async function sendMessage() {
     if (regionSelection && currentFile && currentFile.filePath) {
         // Check if the region selection was made on the current file
         if (regionSelection.filePath && regionSelection.filePath !== currentFile.filePath) {
-            console.log('Region selection was made on a different file, clearing it');
-            console.log('Region file:', regionSelection.filePath);
-            console.log('Current file:', currentFile.filePath);
             regionSelection = null;
             actualRegion = null;
         } else {
             try {
-                console.log('Calculating region coordinates for current file:', currentFile.filePath);
                 const regionResponse = await fetch('/api/calculate-region', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -527,20 +491,13 @@ async function sendMessage() {
                 if (regionResponse.ok) {
                     const regionData = await regionResponse.json();
                     regionString = regionData.regionString;
-                    console.log('Region calculated for current file:', regionString);
                 } else {
                     const errorData = await regionResponse.json();
-                    console.error('Failed to calculate region for current file:', errorData);
-                    if (errorData.debug) {
-                        console.error('Region calculation debug info:', errorData.debug);
-                    }
                     // Clear region selection if calculation fails (e.g., dimensions don't match)
                     regionSelection = null;
                     actualRegion = null;
-                    console.log('Region selection cleared due to calculation failure');
                 }
             } catch (error) {
-                console.error('Error calculating region:', error);
             }
         }
     }
@@ -565,7 +522,6 @@ async function sendMessage() {
     
     // Clear region selection after sending message
     if (regionSelection) {
-        console.log('Clearing region selection after message sent');
         regionSelection = null;
         actualRegion = null;
         
@@ -1043,7 +999,6 @@ async function loadCurrentSettings() {
         
         
     } catch (error) {
-        console.error('Error loading settings:', error);
     }
 }
 
@@ -1131,7 +1086,6 @@ async function copyToClipboard(command, buttonElement) {
         }, 2000);
         
     } catch (error) {
-        console.error('Failed to copy to clipboard:', error);
         
         // Fallback: create a temporary textarea
         const textarea = document.createElement('textarea');
@@ -1153,7 +1107,6 @@ async function copyToClipboard(command, buttonElement) {
             }, 2000);
             
         } catch (fallbackError) {
-            console.error('Fallback copy also failed:', fallbackError);
             
             // Show error state
             const originalText = buttonElement.innerHTML;
@@ -1204,7 +1157,6 @@ async function saveAutoExecuteSetting() {
             })
         });
     } catch (error) {
-        console.error('Error saving auto-execute setting:', error);
     }
 }
 
@@ -1262,7 +1214,6 @@ async function executeFFmpegCommand(command, outputFile, messageId) {
                     mimetype: 'application/octet-stream'
                 };
                 
-                console.log('Updated current file for chaining:', currentFile.originalName);
             }
             
         } else {
@@ -1276,7 +1227,6 @@ async function executeFFmpegCommand(command, outputFile, messageId) {
         }
         
     } catch (error) {
-        console.error('Error executing FFmpeg:', error);
         executeBtn.innerHTML = '❌ Execution Failed';
         executeBtn.classList.remove('executing');
         executeBtn.classList.add('error');
@@ -1308,7 +1258,6 @@ async function cancelExecution() {
             addMessage('info', '🚫 FFmpeg execution cancelled');
         }
     } catch (error) {
-        console.error('Error cancelling execution:', error);
         addMessage('error', `Error cancelling execution: ${error.message}`);
     }
     
@@ -1428,7 +1377,6 @@ async function saveSettings(suppressAlert = false) {
     try {
         localHeaders = JSON.parse(document.getElementById('local-headers').value);
     } catch (e) {
-        console.error('Invalid JSON for headers');
     }
     
     if (localEndpoint) {
@@ -1585,13 +1533,6 @@ function handleRegionMouseUp(e) {
             filePath: filePath // Track which file this selection was made on
         };
         
-        console.log('Region selection stored:', regionSelection);
-        console.log('Media element dimensions:', {
-            offsetWidth: media.offsetWidth,
-            offsetHeight: media.offsetHeight,
-            clientWidth: media.clientWidth,
-            clientHeight: media.clientHeight
-        });
         container.classList.add('has-selection');
     }
     
@@ -1650,7 +1591,6 @@ function updateRegionSelection(container, x, y, width, height) {
 }
 
 function clearRegionSelection(button) {
-    console.log('Clearing region selection');
     const container = button.closest('.region-selection-container');
     const overlay = container.querySelector('.region-selection-overlay');
     overlay.innerHTML = '';
@@ -1661,7 +1601,6 @@ function clearRegionSelection(button) {
     if (wasActiveContainer || regionSelection) {
         regionSelection = null;
         actualRegion = null;
-        console.log('Global region selection cleared');
     }
 }
 
@@ -1725,7 +1664,6 @@ function toggleRegionSelectMode(button) {
                     updateRegionSelection(container, regionSelection.x, regionSelection.y, 
                                         regionSelection.width, regionSelection.height);
                     container.classList.add('has-selection');
-                    console.log('Restored region selection in this container');
                 }
             }
         }
@@ -1818,7 +1756,6 @@ document.addEventListener('keydown', async (e) => {
                 showCopyFeedback(hoveredImage, 'Image copied!');
             }
         } catch (error) {
-            console.error('Failed to copy image:', error);
             showCopyFeedback(hoveredImage, 'Copy failed!', true);
         }
     }
