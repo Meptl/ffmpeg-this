@@ -118,7 +118,7 @@ class FFmpegMetadataExtractor {
       const ffprobeProcess = spawn(ffprobePath, [
         '-v', 'error',
         '-select_streams', 'v:0',
-        '-show_entries', 'stream=width,height,sample_aspect_ratio,display_aspect_ratio',
+        '-show_entries', 'stream=width,height',
         '-of', 'json',
         filePath
       ]);
@@ -143,75 +143,25 @@ class FFmpegMetadataExtractor {
               const width = stream.width;
               const height = stream.height;
               
-              // Extract SAR (Sample/Pixel Aspect Ratio) and DAR (Display Aspect Ratio)
-              let sar = stream.sample_aspect_ratio || '1:1';
-              let dar = stream.display_aspect_ratio;
-              
-              // Parse aspect ratios to numeric values
-              const parseRatio = (ratio) => {
-                if (!ratio || ratio === 'N/A') return null;
-                const parts = ratio.split(':');
-                if (parts.length === 2) {
-                  return parseFloat(parts[0]) / parseFloat(parts[1]);
-                }
-                return null;
-              };
-              
-              const sarValue = parseRatio(sar) || 1;
-              const darValue = parseRatio(dar);
-              
-              // Calculate true display dimensions
-              let trueDisplayWidth, trueDisplayHeight;
-              
-              if (darValue) {
-                // If we have DAR, use it to calculate display dimensions
-                const storageAspectRatio = width / height;
-                const aspectRatioMultiplier = darValue / storageAspectRatio;
-                
-                if (aspectRatioMultiplier > 1) {
-                  // Video is wider than storage suggests
-                  trueDisplayWidth = width * aspectRatioMultiplier;
-                  trueDisplayHeight = height;
-                } else {
-                  // Video is taller than storage suggests
-                  trueDisplayWidth = width;
-                  trueDisplayHeight = height / aspectRatioMultiplier;
-                }
-              } else if (sarValue !== 1) {
-                // If we only have SAR/PAR, use it
-                trueDisplayWidth = width * sarValue;
-                trueDisplayHeight = height;
-              } else {
-                // No aspect ratio correction needed
-                trueDisplayWidth = width;
-                trueDisplayHeight = height;
-              }
-              
               // Get rotation
               const rotation = await this.getVideoRotation(filePath, ffprobePath);
               
               // Apply rotation to display dimensions
               let displayWidth, displayHeight;
               if (rotation === 90 || rotation === -90) {
-                displayWidth = trueDisplayHeight;
-                displayHeight = trueDisplayWidth;
+                displayWidth = height;
+                displayHeight = width;
               } else {
-                displayWidth = trueDisplayWidth;
-                displayHeight = trueDisplayHeight;
+                displayWidth = width;
+                displayHeight = height;
               }
               
               resolve({
                 width,
                 height,
                 rotation,
-                displayWidth: Math.round(displayWidth),
-                displayHeight: Math.round(displayHeight),
-                sar,
-                dar,
-                sarValue,
-                darValue,
-                storageAspectRatio: width / height,
-                displayAspectRatio: trueDisplayWidth / trueDisplayHeight
+                displayWidth,
+                displayHeight
               });
             } else {
               reject(new Error('No video stream found'));
@@ -230,38 +180,6 @@ class FFmpegMetadataExtractor {
     });
   }
 
-  async getFullMetadata(filePath, ffprobePath = 'ffprobe') {
-    return new Promise((resolve, reject) => {
-      const ffprobeProcess = spawn(ffprobePath, [
-        '-v', 'quiet',
-        '-print_format', 'json',
-        '-show_format',
-        '-show_streams',
-        filePath
-      ]);
-      
-      let stdout = '';
-      
-      ffprobeProcess.stdout.on('data', (data) => {
-        stdout += data.toString();
-      });
-      
-      ffprobeProcess.on('close', (code) => {
-        if (code === 0) {
-          try {
-            const metadata = JSON.parse(stdout);
-            resolve(metadata);
-          } catch (e) {
-            reject(new Error('Failed to parse metadata: ' + e.message));
-          }
-        } else {
-          reject(new Error(`ffprobe exited with code ${code}`));
-        }
-      });
-      
-      ffprobeProcess.on('error', reject);
-    });
-  }
 }
 
 module.exports = FFmpegMetadataExtractor;
