@@ -1741,10 +1741,10 @@ function toggleRegionSelectMode(button) {
         button.innerHTML = '✂️';
         activeSelectionContainer = null;
         
-        // Re-enable video controls if needed
+        // Re-enable video interaction
         const video = container.querySelector('video');
         if (video) {
-            video.controls = true;
+            video.style.pointerEvents = '';
         }
     } else {
         // Enable selection mode
@@ -1753,10 +1753,10 @@ function toggleRegionSelectMode(button) {
         button.innerHTML = '❌';
         activeSelectionContainer = container;
         
-        // Disable video controls to prevent interference
+        // Disable video interaction while keeping controls visible
         const video = container.querySelector('video');
         if (video) {
-            video.controls = false;
+            video.style.pointerEvents = 'none';
         }
         
         // If we have a global region selection, display it

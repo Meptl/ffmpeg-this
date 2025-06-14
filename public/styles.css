@@ -790,6 +790,7 @@ h1 {
     max-width: 100%;
 }
 
+
 /* Output media embeds with inline download button */
 .media-embed.output-media {
     display: flex;
@@ -1144,6 +1145,8 @@ h1 {
 .region-selection-container {
     position: relative;
     display: inline-block;
+    /* Ensure container doesn't clip video controls */
+    overflow: visible;
 }
 
 .region-selection-container video,
@@ -1167,14 +1170,22 @@ h1 {
     cursor: pointer;
 }
 
-.region-selection-container.selection-mode img,
-.region-selection-container.selection-mode video {
+.region-selection-container.selection-mode img {
     user-select: none;
     -webkit-user-drag: none;
     -khtml-user-drag: none;
     -moz-user-drag: none;
     -o-user-drag: none;
     pointer-events: none;
+}
+
+/* Videos already have pointer-events set via JavaScript to preserve controls visibility */
+.region-selection-container.selection-mode video {
+    user-select: none;
+    -webkit-user-drag: none;
+    -khtml-user-drag: none;
+    -moz-user-drag: none;
+    -o-user-drag: none;
 }
 
 .region-select-btn {
