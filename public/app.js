@@ -488,7 +488,8 @@ async function sendMessage() {
             
                 if (regionResponse.ok) {
                     const regionData = await regionResponse.json();
-                    regionString = regionData.regionString;
+                    const region = regionData.region;
+                    regionString = `${region.x},${region.y} ${region.width}x${region.height}`;
                 } else {
                     const errorData = await regionResponse.json();
                     // Clear region selection if calculation fails (e.g., dimensions don't match)
