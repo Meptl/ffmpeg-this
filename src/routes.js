@@ -9,6 +9,7 @@ const { spawn } = require('child_process');
 const ffmpegService = require('./services/ffmpeg');
 const { getAllSettings, setAllSettings } = require('./storage');
 const { AIProviderFactory } = require('./services/ai-providers');
+const systemRoutes = require('./routes/system');
 
 
 // Global variable for pre-configured file
@@ -35,10 +36,7 @@ const storage = multer.diskStorage({
   }
 });
 
-const upload = multer({ 
-  storage: storage
-  // No file size limit for local usage
-});
+const upload = multer({ storage: storage });
 
 
 // Generate unique output filename
@@ -82,35 +80,8 @@ function setPreConfiguredFile(filePath) {
   }
 }
 
-// Initialize API configurations from environment variables
-let apiConfigs = {
-  openai: { 
-    apiKey: process.env.OPENAI_API_KEY || '', 
-    model: process.env.OPENAI_MODEL || 'gpt-4-turbo-preview' 
-  },
-  anthropic: { 
-    apiKey: process.env.ANTHROPIC_API_KEY || '', 
-    model: process.env.ANTHROPIC_MODEL || 'claude-3-opus-20240229' 
-  },
-  gemini: { 
-    apiKey: process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '', 
-    model: process.env.GEMINI_MODEL || 'gemini-pro' 
-  },
-  groq: { 
-    apiKey: process.env.GROQ_API_KEY || '', 
-    model: process.env.GROQ_MODEL || 'mixtral-8x7b-32768' 
-  },
-  deepseek: { 
-    apiKey: process.env.DEEPSEEK_API_KEY || '', 
-    model: process.env.DEEPSEEK_MODEL || 'deepseek-chat' 
-  },
-  local: { 
-    endpoint: process.env.LOCAL_LLM_ENDPOINT || process.env.OLLAMA_API_BASE || '', 
-    apiKey: process.env.LOCAL_LLM_API_KEY || '', 
-    headers: {}, 
-    model: process.env.LOCAL_LLM_MODEL || '' 
-  }
-};
+// Import apiConfigs from system routes
+const { apiConfigs } = systemRoutes;
 
 // Log which providers are configured (without exposing keys)
 console.log('Configured providers:');
@@ -119,35 +90,6 @@ configuredProviders.forEach(provider => {
   console.log(`✓ ${provider.id}`);
 });
 
-// Update API configuration
-router.post('/config', (req, res) => {
-  const { provider, config } = req.body;
-  if (apiConfigs[provider]) {
-    apiConfigs[provider] = { ...apiConfigs[provider], ...config };
-    res.json({ success: true });
-  } else {
-    res.status(400).json({ error: 'Invalid provider' });
-  }
-});
-
-// Get current configuration (without sensitive data)
-router.get('/config', (req, res) => {
-  const safeConfig = {};
-  for (const [provider, config] of Object.entries(apiConfigs)) {
-    safeConfig[provider] = {
-      ...config,
-      apiKey: config.apiKey ? '***' : '',
-      headers: provider === 'local' ? config.headers : undefined
-    };
-  }
-  res.json(safeConfig);
-});
-
-// Get list of configured providers
-router.get('/configured-providers', (req, res) => {
-  const providers = AIProviderFactory.getConfiguredProviders();
-  res.json({ providers });
-});
 
 
 // Chat endpoint
@@ -216,10 +158,7 @@ The region field (when not null) specifies a region of interest where:
 - x,y is the top-left corner offset in pixels
 - widthxheight is the size of the region in pixels
 - Example: "100,200 1280x720" means offset (100,200) with size 1280x720
-- To parse: split by space, then "100,200" gives x=100,y=200 and "1280x720" gives width=1280,height=720
 - This is simply a region the user is referencing - only perform actions on it if explicitly requested
-- For cropping operations, use the crop filter: crop=width:height:x:y
-- Example: region "100,200 1280x720" becomes crop=1280:720:100:200
 
 For every response, you must provide output in this exact JSON format:
 {
@@ -231,7 +170,6 @@ For every response, you must provide output in this exact JSON format:
 Rules:
 - When use_placeholders is true (which it always will be), you MUST use {INPUT_FILE} and {OUTPUT_FILE} as placeholders in your ffmpeg commands
 - Do NOT use actual file paths - only use the placeholder strings {INPUT_FILE} and {OUTPUT_FILE}
-- Always provide output_extension - this field is mandatory
 - Always include the -y flag in your ffmpeg commands to overwrite output files
 - Set output_extension to the appropriate file extension (without the dot)
   Examples:
@@ -245,7 +183,7 @@ Rules:
 - For video operations, maintain quality unless asked to compress
 - For audio extraction, use appropriate codec (mp3, wav, etc.)
 - The system will handle file path substitution automatically
-- If the operation is complex, break it into the most essential command
+- If region is given, but no region specific operation is requested, ignore the field.
 - If the operation is unclear or impossible, explain in the error field`;
     
     // Ensure system prompt is always the first message
@@ -314,31 +252,6 @@ Rules:
   }
 });
 
-// Get persistent settings
-router.get('/settings', async (req, res) => {
-  try {
-    const settings = await getAllSettings();
-    res.json(settings);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Update persistent settings
-router.post('/settings', async (req, res) => {
-  try {
-    const success = await setAllSettings(req.body);
-    if (success) {
-      res.json({ success: true });
-    } else {
-      res.status(500).json({ error: 'Failed to save settings' });
-    }
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-
 
 // Calculate region coordinates
 router.post('/calculate-region', async (req, res) => {
@@ -385,19 +298,6 @@ router.post('/calculate-region', async (req, res) => {
   } catch (error) {
     console.error('Error calculating region:', error);
     res.status(500).json({ error: error.message });
-  }
-});
-
-// Get pre-configured file info
-router.get('/preconfigured-file', (req, res) => {
-  if (preConfiguredFile) {
-    // Set this as the current input file for the session
-    const sessionId = getSessionId(req);
-    setCurrentInputFile(sessionId, preConfiguredFile.path);
-    
-    res.json({ file: preConfiguredFile });
-  } else {
-    res.json({ file: null });
   }
 });
 
@@ -734,16 +634,9 @@ router.post('/cancel-ffmpeg', async (req, res) => {
   }
 });
 
-// Check FFmpeg availability
-router.get('/ffmpeg-status', async (req, res) => {
-  try {
-    const result = await ffmpegService.checkAvailability();
-    res.json(result);
-    
-  } catch (error) {
-    res.json({ available: false, error: error.message });
-  }
-});
+
+// Mount system routes
+router.use('/', systemRoutes);
 
 module.exports = router;
 module.exports.setPreConfiguredFile = setPreConfiguredFile;
