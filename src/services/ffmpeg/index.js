@@ -28,7 +28,7 @@ class FFmpegService {
     return this.commandExecutor.checkAvailability(ffmpegPath);
   }
 
-  async getMediaDimensions(filePath, ffprobePath = null) {
+  async transformRegion(displayRegion, filePath, ffprobePath = null) {
     if (!ffprobePath) {
       const settings = await getAllSettings();
       const ffmpegPath = settings.ffmpegPath || 'ffmpeg';
@@ -64,11 +64,32 @@ class FFmpegService {
               const width = stream.width;
               const height = stream.height;
               
+              // Calculate scale from browser display to true display dimensions
+              const scaleX = width / displayRegion.displayWidth;
+              const scaleY = height / displayRegion.displayHeight;
+              
+              // Scale the region to true display coordinates
+              const scaledRegion = {
+                x: Math.round(displayRegion.x * scaleX),
+                y: Math.round(displayRegion.y * scaleY),
+                width: Math.round(displayRegion.width * scaleX),
+                height: Math.round(displayRegion.height * scaleY)
+              };
+              
+              // Format region string
+              const regionString = `${scaledRegion.x},${scaledRegion.y} ${scaledRegion.width}x${scaledRegion.height}`;
+              
               resolve({
-                width,
-                height,
-                displayWidth: width,
-                displayHeight: height
+                regionString: regionString,
+                actualRegion: scaledRegion,
+                originalDimensions: {
+                  width,
+                  height
+                },
+                displayDimensions: {
+                  width: width,
+                  height: height
+                }
               });
             } else {
               reject(new Error('No video stream found'));

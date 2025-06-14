@@ -262,36 +262,8 @@ router.post('/calculate-region', async (req, res) => {
       return res.status(400).json({ error: 'Missing required parameters' });
     }
     
-    // Get media dimensions directly
-    const dimensions = await ffmpegService.getMediaDimensions(filePath);
-    
-    // Calculate scale from browser display to true display dimensions
-    const scaleX = dimensions.displayWidth / displayRegion.displayWidth;
-    const scaleY = dimensions.displayHeight / displayRegion.displayHeight;
-    
-    // Scale the region to true display coordinates
-    const scaledRegion = {
-      x: Math.round(displayRegion.x * scaleX),
-      y: Math.round(displayRegion.y * scaleY),
-      width: Math.round(displayRegion.width * scaleX),
-      height: Math.round(displayRegion.height * scaleY)
-    };
-    
-    // Format region string
-    const regionString = `${scaledRegion.x},${scaledRegion.y} ${scaledRegion.width}x${scaledRegion.height}`;
-    
-    const result = {
-      regionString: regionString,
-      actualRegion: scaledRegion,
-      originalDimensions: {
-        width: dimensions.width,
-        height: dimensions.height
-      },
-      displayDimensions: {
-        width: dimensions.displayWidth,
-        height: dimensions.displayHeight
-      }
-    };
+    // Use the new transformRegion function
+    const result = await ffmpegService.transformRegion(displayRegion, filePath);
     
     res.json(result);
     
