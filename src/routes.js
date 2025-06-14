@@ -349,10 +349,7 @@ router.post('/calculate-region', async (req, res) => {
       return res.status(400).json({ error: 'Missing required parameters' });
     }
     
-    const settings = await getAllSettings();
-    const ffprobePath = (settings.ffmpegPath || 'ffmpeg').replace(/ffmpeg([^\/\\]*)$/, 'ffprobe$1');
-    
-    const result = await ffmpegService.calculateRegionFromDisplay(displayRegion, filePath, ffprobePath);
+    const result = await ffmpegService.calculateRegionFromDisplay(displayRegion, filePath);
     
     
     res.json(result);
@@ -573,10 +570,6 @@ router.post('/execute-ffmpeg', async (req, res) => {
       return res.status(400).json({ error: 'No command provided' });
     }
     
-    // Get FFmpeg path from settings
-    const settings = await getAllSettings();
-    const ffmpegPath = settings.ffmpegPath || 'ffmpeg';
-    
     // Set up output streaming callback
     const onOutput = (type, data) => {
       const sseConnection = sseConnections.get(executionId);
@@ -592,7 +585,6 @@ router.post('/execute-ffmpeg', async (req, res) => {
     
     const result = await ffmpegService.execute({
       command,
-      ffmpegPath,
       inputFile,
       outputFile,
       executionId,
@@ -727,10 +719,7 @@ router.post('/cancel-ffmpeg', async (req, res) => {
 // Check FFmpeg availability
 router.get('/ffmpeg-status', async (req, res) => {
   try {
-    const settings = await getAllSettings();
-    const ffmpegPath = settings.ffmpegPath || 'ffmpeg';
-    
-    const result = await ffmpegService.checkAvailability(ffmpegPath);
+    const result = await ffmpegService.checkAvailability();
     res.json(result);
     
   } catch (error) {

@@ -1,6 +1,7 @@
 const FFmpegCommandExecutor = require('./command-executor');
 const FFmpegMetadataExtractor = require('./metadata-extractor');
 const FFmpegRegionCalculator = require('./region-calculator');
+const { getAllSettings } = require('../../storage');
 
 class FFmpegService {
   constructor() {
@@ -10,6 +11,11 @@ class FFmpegService {
   }
 
   async execute(options) {
+    // If no ffmpegPath provided, get it from settings
+    if (!options.ffmpegPath) {
+      const settings = await getAllSettings();
+      options = { ...options, ffmpegPath: settings.ffmpegPath || 'ffmpeg' };
+    }
     return this.commandExecutor.execute(options);
   }
 
@@ -17,11 +23,20 @@ class FFmpegService {
     return this.commandExecutor.cancel(executionId);
   }
 
-  async checkAvailability(ffmpegPath) {
+  async checkAvailability(ffmpegPath = null) {
+    if (!ffmpegPath) {
+      const settings = await getAllSettings();
+      ffmpegPath = settings.ffmpegPath || 'ffmpeg';
+    }
     return this.commandExecutor.checkAvailability(ffmpegPath);
   }
 
-  async getMediaDimensions(filePath, ffprobePath) {
+  async getMediaDimensions(filePath, ffprobePath = null) {
+    if (!ffprobePath) {
+      const settings = await getAllSettings();
+      const ffmpegPath = settings.ffmpegPath || 'ffmpeg';
+      ffprobePath = ffmpegPath.replace(/ffmpeg([^\/\\]*)$/, 'ffprobe$1');
+    }
     return this.metadataExtractor.getMediaDimensions(filePath, ffprobePath);
   }
 
@@ -38,8 +53,8 @@ class FFmpegService {
     return this.regionCalculator.formatRegionString(region);
   }
 
-  async calculateRegionFromDisplay(displayRegion, filePath, ffprobePath) {
-    const dimensions = await this.getMediaDimensions(filePath, ffprobePath);
+  async calculateRegionFromDisplay(displayRegion, filePath) {
+    const dimensions = await this.getMediaDimensions(filePath);
     
     const result = this._calculateRegion(displayRegion, dimensions);
     
