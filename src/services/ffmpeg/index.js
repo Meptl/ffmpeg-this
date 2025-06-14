@@ -1,12 +1,10 @@
 const FFmpegCommandExecutor = require('./command-executor');
-const FFmpegRegionCalculator = require('./region-calculator');
 const { getAllSettings } = require('../../storage');
 const { spawn } = require('child_process');
 
 class FFmpegService {
   constructor() {
     this.commandExecutor = new FFmpegCommandExecutor();
-    this.regionCalculator = new FFmpegRegionCalculator();
   }
 
   async execute(options) {
@@ -87,44 +85,6 @@ class FFmpegService {
         reject(error);
       });
     });
-  }
-
-  // Private internal methods
-  _calculateRegion(displayRegion, mediaDimensions) {
-    return this.regionCalculator.calculateRegion(displayRegion, mediaDimensions);
-  }
-
-  _validateRegion(region, dimensions) {
-    return this.regionCalculator.validateRegion(region, dimensions);
-  }
-
-  _formatRegionString(region) {
-    return this.regionCalculator.formatRegionString(region);
-  }
-
-  async calculateRegionFromDisplay(displayRegion, filePath) {
-    const dimensions = await this.getMediaDimensions(filePath);
-    
-    const result = this._calculateRegion(displayRegion, dimensions);
-    
-    const isValid = this._validateRegion(result.actualRegion, {
-      width: dimensions.width,
-      height: dimensions.height
-    });
-    
-    // if (!isValid) {
-    //   throw new Error('Invalid region dimensions calculated');
-    // }
-    
-    return {
-      regionString: this._formatRegionString(result.actualRegion),
-      actualRegion: result.actualRegion,
-      originalDimensions: {
-        width: dimensions.width,
-        height: dimensions.height
-      },
-      displayDimensions: result.displayDimensions
-    };
   }
 }
 
