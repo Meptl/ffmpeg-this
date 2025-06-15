@@ -166,7 +166,11 @@ h1 {
     color: #d4d4d4;
     padding: 1rem;
     border-radius: 6px;
-    overflow-x: auto;
+    overflow-x: hidden;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+    word-break: break-word;
+    white-space: pre-wrap;
     margin: 0.5rem 0;
     border: 1px solid #404040;
     font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
@@ -609,7 +613,11 @@ h1 {
     border-radius: 6px;
     padding: 1rem;
     margin: 0;
-    overflow-x: auto;
+    overflow-x: hidden;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+    word-break: break-word;
+    white-space: pre-wrap;
     font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
     font-size: 0.9rem;
     line-height: 1.4;
