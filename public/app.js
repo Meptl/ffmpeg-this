@@ -2,6 +2,7 @@
 import { state, updateState, getState, initializeState } from './js/core/state.js';
 import { api } from './js/services/api.js';
 import { initializeSettings, settings } from './js/ui/settings.js';
+import { initializeRegionSelection, clearRegionSelection, toggleRegionSelectMode, regionSelection } from './js/ui/region-selection.js';
 
 // Global state - using imported state for most values
 let messageManager = null; // Will be initialized after DOM loads
@@ -16,12 +17,7 @@ let showRawMessages = false;
 let autoExecuteCommands = true;
 let mostRecentMediaPath = null;
 
-// Region selection state - will be migrated to state module
-let regionSelection = null;
-let actualRegion = null;
-let isSelecting = false;
-let selectionStart = null;
-let activeSelectionContainer = null;
+// Region selection state moved to state module
 
 // DOM elements
 const messagesDiv = document.getElementById('messages');
@@ -70,6 +66,9 @@ async function initialize() {
     
     // Initialize settings module
     initializeSettings();
+    
+    // Initialize region selection
+    initializeRegionSelection();
     
     // Setup callbacks for settings changes
     window.onShowRawMessagesChanged = (value) => {
@@ -439,9 +438,11 @@ async function handleFileUpload() {
             initialFile = { ...data.file }; // Store initial file separately
             
             // Clear any existing region selection
-            if (regionSelection) {
-                regionSelection = null;
-                actualRegion = null;
+            if (state.regionSelection) {
+                updateState({ 
+                    regionSelection: null,
+                    actualRegion: null
+                });
                 
                 // Clear visual selection from all containers
                 document.querySelectorAll('.region-selection-container').forEach(container => {
@@ -484,33 +485,29 @@ async function sendMessage() {
     
     // Calculate region coordinates if we have a selection
     let regionString = null;
-    if (regionSelection && currentFile && currentFile.filePath) {
+    if (state.regionSelection && currentFile && currentFile.filePath) {
         // Check if the region selection was made on the current file
-        if (regionSelection.filePath && regionSelection.filePath !== currentFile.filePath) {
-            regionSelection = null;
-            actualRegion = null;
+        if (state.regionSelection.filePath && state.regionSelection.filePath !== currentFile.filePath) {
+            updateState({ 
+                regionSelection: null,
+                actualRegion: null
+            });
         } else {
             try {
-                const regionResponse = await fetch('/api/calculate-region', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        displayRegion: regionSelection,
-                        filePath: currentFile.filePath
-                    })
-                });
-            
-                if (regionResponse.ok) {
-                    const regionData = await regionResponse.json();
-                    const region = regionData.region;
+                const regionResponse = await api.calculateRegion(state.regionSelection, currentFile.filePath);
+                
+                if (regionResponse && regionResponse.region) {
+                    const region = regionResponse.region;
                     regionString = `${region.x},${region.y} ${region.width}x${region.height}`;
                 } else {
-                    const errorData = await regionResponse.json();
                     // Clear region selection if calculation fails (e.g., dimensions don't match)
-                    regionSelection = null;
-                    actualRegion = null;
+                    updateState({ 
+                        regionSelection: null,
+                        actualRegion: null
+                    });
                 }
             } catch (error) {
+                console.error('Error calculating region:', error);
             }
         }
     }
@@ -534,26 +531,26 @@ async function sendMessage() {
     messageInput.value = '';
     
     // Exit selection mode but keep visual selection after sending message
-    if (regionSelection) {
+    if (state.regionSelection) {
         // Exit selection mode for any active containers
-        if (activeSelectionContainer) {
-            activeSelectionContainer.classList.remove('selection-mode');
-            const activeBtn = activeSelectionContainer.closest('.media-embed').querySelector('.region-select-btn');
+        if (state.activeSelectionContainer) {
+            state.activeSelectionContainer.classList.remove('selection-mode');
+            const activeBtn = state.activeSelectionContainer.closest('.media-embed').querySelector('.region-select-btn');
             if (activeBtn) {
                 activeBtn.classList.remove('active');
                 activeBtn.innerHTML = '✂️';
             }
             
             // Re-enable video controls if needed
-            const video = activeSelectionContainer.querySelector('video');
+            const video = state.activeSelectionContainer.querySelector('video');
             if (video) {
                 video.controls = true;
             }
             
-            activeSelectionContainer = null;
+            updateState({ activeSelectionContainer: null });
         }
         
-        isSelecting = false;
+        updateState({ isSelecting: false });
         // Note: We're keeping regionSelection, actualRegion, and the visual overlay
     }
     
@@ -1379,251 +1376,7 @@ function addOutputMediaMessage(outputFilePath, afterMessageId) {
 
 // saveSettings function moved to settings.js module
 
-// Region Selection Functions
-function initializeRegionSelection() {
-    // Add event listeners to all region selection containers
-    document.addEventListener('mousedown', handleRegionMouseDown);
-    document.addEventListener('mousemove', handleRegionMouseMove);
-    document.addEventListener('mouseup', handleRegionMouseUp);
-}
-
-function handleRegionMouseDown(e) {
-    // Check if we're clicking on a button or input
-    if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-    
-    // Find the closest selection-mode container from the click point
-    let targetContainer = null;
-    
-    // First check if we clicked directly on a container
-    const directContainer = e.target.closest('.region-selection-container');
-    if (directContainer && directContainer.classList.contains('selection-mode')) {
-        targetContainer = directContainer;
-    } else {
-        // Check if we're clicking within a message that contains an active selection container
-        const messageElement = e.target.closest('.message');
-        if (messageElement) {
-            const containerInMessage = messageElement.querySelector('.region-selection-container.selection-mode');
-            if (containerInMessage) {
-                targetContainer = containerInMessage;
-            }
-        }
-    }
-    
-    if (!targetContainer) return;
-    
-    // Prevent default drag behavior
-    e.preventDefault();
-    
-    isSelecting = true;
-    const rect = targetContainer.getBoundingClientRect();
-    selectionStart = {
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top,
-        container: targetContainer
-    };
-    
-    // Clear visual selection in this container only
-    const overlay = targetContainer.querySelector('.region-selection-overlay');
-    overlay.innerHTML = '';
-    targetContainer.classList.remove('has-selection');
-}
-
-function handleRegionMouseMove(e) {
-    if (!isSelecting || !selectionStart) return;
-    
-    const container = selectionStart.container;
-    const rect = container.getBoundingClientRect();
-    const media = container.querySelector('img, video');
-    const mediaRect = media.getBoundingClientRect();
-    
-    // Calculate mouse position relative to container
-    let currentX = e.clientX - rect.left;
-    let currentY = e.clientY - rect.top;
-    
-    // Constrain to media boundaries
-    const mediaOffsetX = mediaRect.left - rect.left;
-    const mediaOffsetY = mediaRect.top - rect.top;
-    const mediaWidth = media.offsetWidth;
-    const mediaHeight = media.offsetHeight;
-    
-    currentX = Math.max(mediaOffsetX, Math.min(currentX, mediaOffsetX + mediaWidth));
-    currentY = Math.max(mediaOffsetY, Math.min(currentY, mediaOffsetY + mediaHeight));
-    
-    // Constrain start position too (in case it was outside)
-    const constrainedStartX = Math.max(mediaOffsetX, Math.min(selectionStart.x, mediaOffsetX + mediaWidth));
-    const constrainedStartY = Math.max(mediaOffsetY, Math.min(selectionStart.y, mediaOffsetY + mediaHeight));
-    
-    // Calculate selection rectangle
-    const x = Math.min(constrainedStartX, currentX);
-    const y = Math.min(constrainedStartY, currentY);
-    const width = Math.abs(currentX - constrainedStartX);
-    const height = Math.abs(currentY - constrainedStartY);
-    
-    // Update region selection
-    updateRegionSelection(container, x, y, width, height);
-}
-
-function handleRegionMouseUp(e) {
-    if (!isSelecting) return;
-    
-    isSelecting = false;
-    
-    // Store the final selection
-    const overlay = selectionStart.container.querySelector('.region-selection-overlay');
-    const selection = overlay.querySelector('.region-selection');
-    if (selection) {
-        const container = selectionStart.container;
-        const media = container.querySelector('img, video');
-        
-        const mediaContainer = selectionStart.container;
-        const filePath = mediaContainer.getAttribute('data-file-path');
-        
-        regionSelection = {
-            x: parseInt(selection.style.left),
-            y: parseInt(selection.style.top),
-            width: parseInt(selection.style.width),
-            height: parseInt(selection.style.height),
-            displayWidth: media.offsetWidth,
-            displayHeight: media.offsetHeight,
-            filePath: filePath // Track which file this selection was made on
-        };
-        
-        container.classList.add('has-selection');
-    }
-    
-    selectionStart = null;
-}
-
-function updateRegionSelection(container, x, y, width, height) {
-    const overlay = container.querySelector('.region-selection-overlay');
-    
-    // Clear existing elements
-    overlay.innerHTML = '';
-    
-    if (width < 5 || height < 5) return; // Minimum selection size
-    
-    // Create selection rectangle
-    const selection = document.createElement('div');
-    selection.className = 'region-selection';
-    selection.style.left = x + 'px';
-    selection.style.top = y + 'px';
-    selection.style.width = width + 'px';
-    selection.style.height = height + 'px';
-    overlay.appendChild(selection);
-    
-    // Create darkening overlays
-    const media = container.querySelector('img, video');
-    const mediaWidth = media.offsetWidth;
-    const mediaHeight = media.offsetHeight;
-    
-    // Top darkening
-    const topDark = document.createElement('div');
-    topDark.className = 'region-darkening top';
-    topDark.style.height = y + 'px';
-    overlay.appendChild(topDark);
-    
-    // Bottom darkening
-    const bottomDark = document.createElement('div');
-    bottomDark.className = 'region-darkening bottom';
-    bottomDark.style.height = (mediaHeight - y - height) + 'px';
-    overlay.appendChild(bottomDark);
-    
-    // Left darkening
-    const leftDark = document.createElement('div');
-    leftDark.className = 'region-darkening left';
-    leftDark.style.top = y + 'px';
-    leftDark.style.width = x + 'px';
-    leftDark.style.height = height + 'px';
-    overlay.appendChild(leftDark);
-    
-    // Right darkening
-    const rightDark = document.createElement('div');
-    rightDark.className = 'region-darkening right';
-    rightDark.style.top = y + 'px';
-    rightDark.style.width = (mediaWidth - x - width) + 'px';
-    rightDark.style.height = height + 'px';
-    overlay.appendChild(rightDark);
-}
-
-function clearRegionSelection(button) {
-    const container = button.closest('.region-selection-container');
-    const overlay = container.querySelector('.region-selection-overlay');
-    overlay.innerHTML = '';
-    container.classList.remove('has-selection');
-    // Only clear if this was for the currently active selection
-    const wasActiveContainer = container === activeSelectionContainer || 
-                              container.classList.contains('selection-mode');
-    if (wasActiveContainer || regionSelection) {
-        regionSelection = null;
-        actualRegion = null;
-    }
-}
-
-// Toggle region selection mode
-function toggleRegionSelectMode(button) {
-    // Find the container within the same media embed
-    const mediaEmbed = button.closest('.media-embed');
-    const container = mediaEmbed.querySelector('.region-selection-container');
-    
-    if (!container) return;
-    
-    const isActive = container.classList.contains('selection-mode');
-    
-    // Disable any other active selection mode
-    if (activeSelectionContainer && activeSelectionContainer !== container) {
-        activeSelectionContainer.classList.remove('selection-mode');
-        const otherEmbed = activeSelectionContainer.closest('.media-embed');
-        const otherBtn = otherEmbed.querySelector('.region-select-btn');
-        if (otherBtn) {
-            otherBtn.classList.remove('active');
-            otherBtn.innerHTML = '✂️';
-        }
-    }
-    
-    if (isActive) {
-        // Disable selection mode
-        container.classList.remove('selection-mode');
-        button.classList.remove('active');
-        button.innerHTML = '✂️';
-        activeSelectionContainer = null;
-        
-        // Re-enable video interaction
-        const video = container.querySelector('video');
-        if (video) {
-            video.style.pointerEvents = '';
-        }
-    } else {
-        // Enable selection mode
-        container.classList.add('selection-mode');
-        button.classList.add('active');
-        button.innerHTML = '❌';
-        activeSelectionContainer = container;
-        
-        // Disable video interaction while keeping controls visible
-        const video = container.querySelector('video');
-        if (video) {
-            video.style.pointerEvents = 'none';
-        }
-        
-        // If we have a global region selection, display it
-        if (regionSelection) {
-            const media = container.querySelector('img, video');
-            if (media) {
-                // Check if this selection matches the current media dimensions
-                const currentWidth = media.offsetWidth;
-                const currentHeight = media.offsetHeight;
-                
-                // If dimensions match, show the selection
-                if (Math.abs(currentWidth - regionSelection.displayWidth) < 5 && 
-                    Math.abs(currentHeight - regionSelection.displayHeight) < 5) {
-                    updateRegionSelection(container, regionSelection.x, regionSelection.y, 
-                                        regionSelection.width, regionSelection.height);
-                    container.classList.add('has-selection');
-                }
-            }
-        }
-    }
-}
+// Region selection functions moved to region-selection.js module
 
 // Make functions globally available for inline event handlers
 window.clearRegionSelection = clearRegionSelection;
@@ -1635,11 +1388,7 @@ window.copyToClipboard = copyToClipboard;
 window.downloadFile = downloadFile;
 
 
-// Initialize region selection when DOM is ready
-document.addEventListener('DOMContentLoaded', initializeRegionSelection);
-
-// Also initialize on dynamic content
-initializeRegionSelection();
+// Region selection initialization moved to main initialize() function
 
 
 // Image copy functionality

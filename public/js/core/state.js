@@ -26,11 +26,11 @@ const state = {
     settingsChanged: false,
     
     // Region selection state
-    regionSelection: null,
-    actualRegion: null,
+    regionSelection: null, // {x, y, width, height} in pixels relative to displayed size
+    actualRegion: null, // {x, y, width, height} in pixels relative to original media
     isSelecting: false,
     selectionStart: null,
-    activeSelectionContainer: null,
+    activeSelectionContainer: null, // Track which container is in selection mode
     
     // Execution state
     currentExecutionId: null
