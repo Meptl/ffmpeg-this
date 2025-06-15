@@ -8,6 +8,7 @@ let initialFile = null;
 let showRawMessages = false; // Flag to show raw messages instead of structured display - defaults to false
 let autoExecuteCommands = true; // Flag to auto-execute FFmpeg commands - defaults to true
 let settingsChanged = false; // Track if settings have been modified
+let mostRecentMediaPath = null; // Track the most recent media file path
 
 // Region selection state
 let regionSelection = null; // {x, y, width, height} in pixels relative to displayed size
@@ -357,7 +358,8 @@ function addInitialFileEmbed() {
     messageDiv.className = 'message user initial-media';
     messageDiv.id = 'initial-file-embed';
     
-    const mediaEmbed = createMediaEmbed(initialFile.filePath, initialFile.originalName, true, true);
+    const showRegionBtn = initialFile.filePath === mostRecentMediaPath;
+    const mediaEmbed = createMediaEmbed(initialFile.filePath, initialFile.originalName, true, true, showRegionBtn);
     
     messageDiv.innerHTML = `
         <div class="message-content">
@@ -439,6 +441,21 @@ async function handleFileUpload() {
             currentFile = data.file;
             initialFile = { ...data.file }; // Store initial file separately
             
+            // Clear any existing region selection
+            if (regionSelection) {
+                regionSelection = null;
+                actualRegion = null;
+                
+                // Clear visual selection from all containers
+                document.querySelectorAll('.region-selection-container').forEach(container => {
+                    const overlay = container.querySelector('.region-selection-overlay');
+                    if (overlay) {
+                        overlay.innerHTML = '';
+                    }
+                    container.classList.remove('has-selection');
+                });
+            }
+            
             // Clear status and switch to chat interface
             fileStatus.textContent = '';
             fileStatus.className = 'file-status';
@@ -519,20 +536,8 @@ async function sendMessage() {
     }
     messageInput.value = '';
     
-    // Clear region selection after sending message
+    // Exit selection mode but keep visual selection after sending message
     if (regionSelection) {
-        regionSelection = null;
-        actualRegion = null;
-        
-        // Clear visual selection from all containers
-        document.querySelectorAll('.region-selection-container').forEach(container => {
-            const overlay = container.querySelector('.region-selection-overlay');
-            if (overlay) {
-                overlay.innerHTML = '';
-            }
-            container.classList.remove('has-selection');
-        });
-        
         // Exit selection mode for any active containers
         if (activeSelectionContainer) {
             activeSelectionContainer.classList.remove('selection-mode');
@@ -550,6 +555,9 @@ async function sendMessage() {
             
             activeSelectionContainer = null;
         }
+        
+        isSelecting = false;
+        // Note: We're keeping regionSelection, actualRegion, and the visual overlay
     }
     
     // Show loading indicator
@@ -623,6 +631,17 @@ function reRenderAllMessages() {
     
     const messages = messageManager.getMessages();
     
+    // First pass: find the most recent media
+    let lastMediaPath = null;
+    messages.forEach(msgData => {
+        if (msgData.type === 'initial-file' && initialFile) {
+            lastMediaPath = initialFile.filePath;
+        } else if (msgData.type === 'output-media') {
+            lastMediaPath = msgData.outputFilePath || msgData.filePath;
+        }
+    });
+    mostRecentMediaPath = lastMediaPath;
+    
     // Show prompt header if raw mode is enabled and we have messages
     if (showRawMessages && messageManager.getSystemPrompt() && messages.length > 0) {
         showPromptHeaderMessage();
@@ -651,7 +670,9 @@ function reRenderAllMessages() {
             messageDiv.className = 'message assistant output-media';
             messageDiv.id = msgData.id || `msg-${Date.now() + Math.random()}`;
             
-            const mediaEmbed = createMediaEmbed(msgData.outputFilePath || msgData.filePath, msgData.fileName, true);
+            const filePath = msgData.outputFilePath || msgData.filePath;
+            const showRegionBtn = filePath === mostRecentMediaPath;
+            const mediaEmbed = createMediaEmbed(filePath, msgData.fileName, true, false, showRegionBtn);
             messageDiv.innerHTML = `
                 <div class="message-content">
                     ${mediaEmbed}
@@ -833,7 +854,7 @@ function getMediaType(filePath) {
     return 'unknown';
 }
 
-function createMediaEmbed(filePath, fileName, isResponseMedia = false, hideDownloadButton = false) {
+function createMediaEmbed(filePath, fileName, isResponseMedia = false, hideDownloadButton = false, showRegionButton = false) {
     const mediaType = getMediaType(filePath);
     const safeFileName = fileName.replace(/[<>&"']/g, function(match) {
         const htmlEntities = { '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' };
@@ -884,13 +905,13 @@ function createMediaEmbed(filePath, fileName, isResponseMedia = false, hideDownl
                             <div class="region-selection-overlay"></div>
                             <button class="clear-region-btn" onclick="clearRegionSelection(this)">Clear</button>
                         </div>
-                        <button class="region-select-btn" onclick="toggleRegionSelectMode(this)" title="Select Region">✂️</button>
+                        ${showRegionButton ? '<button class="region-select-btn" onclick="toggleRegionSelectMode(this)" title="Select Region">✂️</button>' : ''}
                         ${downloadButton}
                     </div>`;
             } else {
                 return `
                     <div class="media-embed video-embed">
-                        <div class="media-header"><button class="region-select-btn" onclick="toggleRegionSelectMode(this)" title="Select Region">✂️</button>${downloadButton} 🎬 ${safeFileName}</div>
+                        <div class="media-header">${showRegionButton ? '<button class="region-select-btn" onclick="toggleRegionSelectMode(this)" title="Select Region">✂️</button>' : ''}${downloadButton} 🎬 ${safeFileName}</div>
                         <div class="region-selection-container" data-file-path="${filePath.replace(/"/g, '&quot;')}">
                             <video controls>
                                 <source src="/api/serve-file?path=${encodeURIComponent(filePath)}" type="video/${getFileExtension(filePath)}">
@@ -911,13 +932,13 @@ function createMediaEmbed(filePath, fileName, isResponseMedia = false, hideDownl
                             <div class="region-selection-overlay"></div>
                             <button class="clear-region-btn" onclick="clearRegionSelection(this)">Clear</button>
                         </div>
-                        <button class="region-select-btn" onclick="toggleRegionSelectMode(this)" title="Select Region">✂️</button>
+                        ${showRegionButton ? '<button class="region-select-btn" onclick="toggleRegionSelectMode(this)" title="Select Region">✂️</button>' : ''}
                         ${downloadButton}
                     </div>`;
             } else {
                 return `
                     <div class="media-embed image-embed">
-                        <div class="media-header"><button class="region-select-btn" onclick="toggleRegionSelectMode(this)" title="Select Region">✂️</button>${downloadButton} 🖼️ ${safeFileName}</div>
+                        <div class="media-header">${showRegionButton ? '<button class="region-select-btn" onclick="toggleRegionSelectMode(this)" title="Select Region">✂️</button>' : ''}${downloadButton} 🖼️ ${safeFileName}</div>
                         <div class="region-selection-container" data-file-path="${filePath.replace(/"/g, '&quot;')}">
                             <img src="/api/serve-file?path=${encodeURIComponent(filePath)}" alt="${safeFileName}" loading="lazy">
                             <div class="region-selection-overlay"></div>
@@ -1426,6 +1447,13 @@ function addExecutionResultMessage(result, parentMessageId) {
 
 // Add output media as a separate message
 function addOutputMediaMessage(outputFilePath, afterMessageId) {
+    // Hide region button from previous most recent media
+    if (mostRecentMediaPath) {
+        document.querySelectorAll('.media-embed .region-select-btn').forEach(btn => {
+            btn.style.display = 'none';
+        });
+    }
+    
     const messageDiv = document.createElement('div');
     messageDiv.className = 'message assistant output-media';
     
@@ -1433,7 +1461,8 @@ function addOutputMediaMessage(outputFilePath, afterMessageId) {
     messageDiv.id = `msg-${id}`;
     
     const fileName = outputFilePath.split('/').pop();
-    const mediaEmbed = createMediaEmbed(outputFilePath, fileName, true);
+    mostRecentMediaPath = outputFilePath; // Update most recent media
+    const mediaEmbed = createMediaEmbed(outputFilePath, fileName, true, false, true);
     
     messageDiv.innerHTML = `
         <div class="message-content">
