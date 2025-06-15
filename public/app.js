@@ -1,33 +1,34 @@
-// Global state
+// Import modules
+import { state, updateState, getState, initializeState } from './js/core/state.js';
+import { api } from './js/services/api.js';
+import { initializeSettings, settings } from './js/ui/settings.js';
+
+// Global state - using imported state for most values
 let messageManager = null; // Will be initialized after DOM loads
+
+// These will be migrated to state module references
 let currentProvider = '';
 let configuredProviders = [];
 let ffmpegAvailable = false;
 let currentFile = null;
 let initialFile = null;
-let showRawMessages = false; // Flag to show raw messages instead of structured display - defaults to false
-let autoExecuteCommands = true; // Flag to auto-execute FFmpeg commands - defaults to true
-let settingsChanged = false; // Track if settings have been modified
-let mostRecentMediaPath = null; // Track the most recent media file path
+let showRawMessages = false;
+let autoExecuteCommands = true;
+let mostRecentMediaPath = null;
 
-// Region selection state
-let regionSelection = null; // {x, y, width, height} in pixels relative to displayed size
-let actualRegion = null; // {x, y, width, height} in pixels relative to original media
+// Region selection state - will be migrated to state module
+let regionSelection = null;
+let actualRegion = null;
 let isSelecting = false;
 let selectionStart = null;
-let activeSelectionContainer = null; // Track which container is in selection mode
+let activeSelectionContainer = null;
 
 // DOM elements
 const messagesDiv = document.getElementById('messages');
 const messageInput = document.getElementById('message-input');
 const sendBtn = document.getElementById('send-btn');
 const providerSelect = document.getElementById('provider-select');
-const settingsBtn = document.getElementById('settings-btn');
-const settingsModal = document.getElementById('settings-modal');
-const closeModal = document.querySelector('.close');
-const saveSettingsBtn = document.getElementById('save-settings');
 const ffmpegStatus = document.getElementById('ffmpeg-status');
-// Remove reference to main UI toggle since it's been moved to settings
 
 // File upload elements
 const fileInput = document.getElementById('file-input');
@@ -52,28 +53,44 @@ function getProviderDisplayName(provider) {
 initialize();
 
 async function initialize() {
+    // Initialize state from persistent storage
+    await initializeState();
+    
     // Initialize message manager
     messageManager = new MessageManager();
+    updateState({ messageManager });
     
-    const settings = await loadPersistentSettings();
+    // Get state values
+    const currentState = getState();
+    showRawMessages = currentState.showRawMessages;
+    autoExecuteCommands = currentState.autoExecuteCommands;
     
-    // Load autoExecute setting
-    if (settings && settings.autoExecuteCommands !== undefined) {
-        autoExecuteCommands = settings.autoExecuteCommands;
-    }
+    // Apply loaded settings
+    messageManager.setDisplayMode(showRawMessages);
     
-    // Load showRawMessages setting
-    if (settings && settings.showRawMessages !== undefined) {
-        showRawMessages = settings.showRawMessages;
-        messageManager.setDisplayMode(showRawMessages);
-        // Also set the checkbox if it exists
-        const showRawMessagesCheckbox = document.getElementById('show-raw-messages');
-        if (showRawMessagesCheckbox) {
-            showRawMessagesCheckbox.checked = showRawMessages;
+    // Initialize settings module
+    initializeSettings();
+    
+    // Setup callbacks for settings changes
+    window.onShowRawMessagesChanged = (value) => {
+        showRawMessages = value;
+        messageManager.setDisplayMode(value);
+        reRenderAllMessages();
+        
+        if (value && messageManager.getSystemPrompt()) {
+            showPromptHeaderMessage();
+        } else {
+            hidePromptHeaderMessage();
         }
-    }
+    };
     
-    setupSettingsChangeTracking(); // Setup change tracking after DOM is loaded
+    window.onSettingsSaved = async () => {
+        // Re-check ffmpeg status and reload providers
+        const ffmpegOk = await checkFFmpegStatus();
+        if (ffmpegOk) {
+            await loadConfiguredProviders();
+        }
+    };
     
     const ffmpegOk = await checkFFmpegStatus();
     if (ffmpegOk) {
@@ -83,6 +100,7 @@ async function initialize() {
             // Skip file upload, go directly to chat
             currentFile = preConfiguredFile;
             initialFile = { ...preConfiguredFile }; // Store initial file separately
+            updateState({ currentFile, initialFile });
             showChatInterface();
         }
         await loadConfiguredProviders();
@@ -99,21 +117,9 @@ messageInput.addEventListener('keypress', (e) => {
 });
 providerSelect.addEventListener('change', (e) => {
     currentProvider = e.target.value;
+    updateState({ currentProvider });
 });
-settingsBtn.addEventListener('click', () => {
-    settingsModal.style.display = 'block';
-    settingsChanged = false; // Reset change tracking when opening modal
-    loadCurrentSettings();
-});
-closeModal.addEventListener('click', () => {
-    closeSettingsModal();
-});
-window.addEventListener('click', (e) => {
-    if (e.target === settingsModal) {
-        closeSettingsModal();
-    }
-});
-saveSettingsBtn.addEventListener('click', saveSettings);
+// Settings module handles these events now
 // Event listener moved to settings modal
 
 // Tab switching functionality
@@ -255,9 +261,9 @@ function processClipboardBlob(blob) {
 // Load configured providers
 async function loadConfiguredProviders() {
     try {
-        const response = await fetch('/api/configured-providers');
-        const data = await response.json();
+        const data = await api.getConfiguredProviders();
         configuredProviders = data.providers;
+        updateState({ configuredProviders });
         
         // Clear existing options
         providerSelect.innerHTML = '';
@@ -286,6 +292,7 @@ async function loadConfiguredProviders() {
                 // Set first provider as current
                 if (index === 0) {
                     currentProvider = provider.id;
+                    updateState({ currentProvider });
                 }
             });
         }
@@ -294,29 +301,19 @@ async function loadConfiguredProviders() {
     }
 }
 
-// Load persistent settings
+// Load persistent settings - now uses api module
 async function loadPersistentSettings() {
     try {
-        const response = await fetch('/api/settings');
-        const settings = await response.json();
-        return settings;
+        return await api.getSettings();
     } catch (error) {
+        console.error('Error loading settings:', error);
+        return null;
     }
 }
 
 // Check for pre-configured file
 async function checkPreConfiguredFile() {
-    try {
-        const response = await fetch('/api/preconfigured-file');
-        const data = await response.json();
-        
-        if (data.file) {
-            return data.file;
-        }
-        return null;
-    } catch (error) {
-        return null;
-    }
+    return await api.getPreConfiguredFile();
 }
 
 // Show chat interface (used for both file uploads and pre-configured files)
@@ -381,10 +378,10 @@ function addInitialFileEmbed() {
 // Check ffmpeg status
 async function checkFFmpegStatus() {
     try {
-        const response = await fetch('/api/ffmpeg-status');
-        const data = await response.json();
+        const data = await api.checkFFmpegStatus();
         
         ffmpegAvailable = data.available;
+        updateState({ ffmpegAvailable });
         
         if (!data.available) {
             // Only show status when ffmpeg is NOT available
@@ -982,105 +979,7 @@ function formatMessageContent(content) {
     return content;
 }
 
-// Load current settings
-async function loadCurrentSettings() {
-    try {
-        // Load API configs
-        const response = await fetch('/api/config');
-        const config = await response.json();
-        
-        // Populate form fields
-        for (const [provider, settings] of Object.entries(config)) {
-            if (provider === 'local') {
-                document.getElementById('local-endpoint').value = settings.endpoint || '';
-                document.getElementById('local-key').value = '';
-                document.getElementById('local-model').value = settings.model || '';
-                document.getElementById('local-headers').value = JSON.stringify(settings.headers || {}, null, 2);
-            } else {
-                const keyInput = document.getElementById(`${provider}-key`);
-                const modelInput = document.getElementById(`${provider}-model`);
-                if (keyInput) keyInput.value = '';
-                if (modelInput) modelInput.value = settings.model || '';
-            }
-        }
-        
-        // Load persistent settings (ffmpeg path)
-        const persistentResponse = await fetch('/api/settings');
-        const persistentSettings = await persistentResponse.json();
-        
-        const ffmpegPathInput = document.getElementById('ffmpeg-path');
-        if (ffmpegPathInput) {
-            ffmpegPathInput.value = persistentSettings.ffmpegPath || '';
-        }
-        
-        // Update system settings checkboxes
-        const showRawMessagesCheckbox = document.getElementById('show-raw-messages');
-        if (showRawMessagesCheckbox) {
-            showRawMessagesCheckbox.checked = showRawMessages;
-        }
-        
-        const autoExecuteCheckbox = document.getElementById('auto-execute-commands');
-        if (autoExecuteCheckbox) {
-            autoExecuteCheckbox.checked = autoExecuteCommands;
-        }
-        
-        
-    } catch (error) {
-    }
-}
-
-
-// Close settings modal with optional change check
-function closeSettingsModal() {
-    if (settingsChanged) {
-        const shouldSave = confirm('You have unsaved changes. Would you like to save them before closing?');
-        if (shouldSave) {
-            saveSettings(true); // Pass flag to suppress success alert
-            return;
-        }
-    }
-    settingsModal.style.display = 'none';
-}
-
-// Track changes in settings inputs
-function setupSettingsChangeTracking() {
-    // Track all input changes in the settings modal
-    const settingsInputs = settingsModal.querySelectorAll('input, textarea, select');
-    settingsInputs.forEach(input => {
-        input.addEventListener('change', () => {
-            settingsChanged = true;
-        });
-        input.addEventListener('input', () => {
-            settingsChanged = true;
-        });
-    });
-    
-    // Add event listener for show raw messages checkbox
-    const showRawMessagesCheckbox = document.getElementById('show-raw-messages');
-    if (showRawMessagesCheckbox) {
-        showRawMessagesCheckbox.addEventListener('change', (e) => {
-            showRawMessages = e.target.checked;
-            messageManager.setDisplayMode(showRawMessages);
-            reRenderAllMessages();
-            
-            // Show prompt header when raw JSON is enabled
-            if (showRawMessages && messageManager.getSystemPrompt()) {
-                showPromptHeaderMessage();
-            } else {
-                hidePromptHeaderMessage();
-            }
-        });
-    }
-    
-    // Add event listener for auto execute checkbox
-    const autoExecuteCheckbox = document.getElementById('auto-execute-commands');
-    if (autoExecuteCheckbox) {
-        autoExecuteCheckbox.addEventListener('change', (e) => {
-            autoExecuteCommands = e.target.checked;
-            // This is a persistent setting, so don't override settingsChanged
-        });
-    }
-}
+// Settings-related functions moved to settings.js module
 
 // Download file function
 function downloadFile(filePath, fileName) {
@@ -1175,16 +1074,7 @@ async function executeAndToggleAuto(command, outputFile, messageId) {
 
 // Save only the auto-execute setting
 async function saveAutoExecuteSetting() {
-    try {
-        await fetch('/api/settings', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                autoExecuteCommands: autoExecuteCommands
-            })
-        });
-    } catch (error) {
-    }
+    await settings.saveAutoExecute();
 }
 
 // Execute FFmpeg command
@@ -1487,81 +1377,7 @@ function addOutputMediaMessage(outputFilePath, afterMessageId) {
     return id;
 }
 
-// Save settings
-async function saveSettings(suppressAlert = false) {
-    const providers = ['openai', 'anthropic', 'gemini', 'groq', 'deepseek'];
-    
-    for (const provider of providers) {
-        const apiKey = document.getElementById(`${provider}-key`).value;
-        const model = document.getElementById(`${provider}-model`).value;
-        
-        if (apiKey) {
-            await fetch('/api/config', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    provider,
-                    config: { apiKey, model }
-                })
-            });
-        }
-    }
-    
-    // Save local LLM settings
-    const localEndpoint = document.getElementById('local-endpoint').value;
-    const localKey = document.getElementById('local-key').value;
-    const localModel = document.getElementById('local-model').value;
-    let localHeaders = {};
-    
-    try {
-        localHeaders = JSON.parse(document.getElementById('local-headers').value);
-    } catch (e) {
-    }
-    
-    if (localEndpoint) {
-        await fetch('/api/config', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                provider: 'local',
-                config: {
-                    endpoint: localEndpoint,
-                    apiKey: localKey,
-                    model: localModel,
-                    headers: localHeaders
-                }
-            })
-        });
-    }
-    
-    // Save persistent settings (ffmpeg path, autoExecute, and showRawMessages)
-    const ffmpegPath = document.getElementById('ffmpeg-path').value;
-    const autoExecute = document.getElementById('auto-execute-commands').checked;
-    const showRaw = document.getElementById('show-raw-messages').checked;
-    
-    await fetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-            ffmpegPath,
-            autoExecuteCommands: autoExecute,
-            showRawMessages: showRaw
-        })
-    });
-    
-    settingsChanged = false; // Reset change tracking after saving
-    settingsModal.style.display = 'none';
-    
-    if (!suppressAlert) {
-        alert('Settings saved successfully!');
-    }
-    
-    // Re-check ffmpeg status and reload providers
-    const ffmpegOk = await checkFFmpegStatus();
-    if (ffmpegOk) {
-        await loadConfiguredProviders();
-    }
-}
+// saveSettings function moved to settings.js module
 
 // Region Selection Functions
 function initializeRegionSelection() {
@@ -1809,10 +1625,14 @@ function toggleRegionSelectMode(button) {
     }
 }
 
-// Make functions globally available
+// Make functions globally available for inline event handlers
 window.clearRegionSelection = clearRegionSelection;
 window.toggleRegionSelectMode = toggleRegionSelectMode;
 window.cancelFFmpegExecution = cancelFFmpegExecution;
+window.executeFFmpegCommand = executeFFmpegCommand;
+window.executeAndToggleAuto = executeAndToggleAuto;
+window.copyToClipboard = copyToClipboard;
+window.downloadFile = downloadFile;
 
 
 // Initialize region selection when DOM is ready
