@@ -11,7 +11,7 @@ const execAsync = promisify(exec);
 
 // Import routes and storage
 const apiRoutes = require('./src/routes');
-const { setPreConfiguredFile } = require('./src/routes');
+const { setPreConfiguredFile } = require('./src/routes/system');
 const { initStorage, get } = require('./src/storage');
 
 // Parse command line arguments
@@ -19,12 +19,14 @@ program
   .name('ffmpeg-this')
   .description('CLI tool for AI chat interface with ffmpeg integration')
   .version('1.0.0')
+  .argument('[file]', 'file to pre-configure (can also use -f/--file)')
   .option('-p, --port <port>', 'port to run the server on', '3000')
   .option('-f, --file <path>', 'pre-configure with a file path')
   .option('--no-open', 'do not open browser automatically')
   .parse();
 
 const options = program.opts();
+const args = program.args;
 const PORT = parseInt(options.port, 10);
 
 // Create Express app
@@ -56,9 +58,10 @@ app.get('/api/ffmpeg-status', async (req, res) => {
 (async () => {
   await initStorage();
   
-  // Handle pre-configured file if provided
-  if (options.file) {
-    setPreConfiguredFile(options.file);
+  // Handle pre-configured file if provided (either as positional arg or --file option)
+  const fileToPreConfigure = args[0] || options.file;
+  if (fileToPreConfigure) {
+    setPreConfiguredFile(fileToPreConfigure);
   }
   
   app.listen(PORT, () => {

@@ -3,6 +3,40 @@ const router = express.Router();
 const ffmpegService = require('../services/ffmpeg');
 const { getAllSettings, setAllSettings } = require('../storage');
 const { AIProviderFactory } = require('../services/ai-providers');
+const fs = require('fs');
+const path = require('path');
+
+// Global variable for pre-configured file
+let preConfiguredFile = null;
+
+// Set pre-configured file (called from CLI)
+function setPreConfiguredFile(filePath) {
+  if (fs.existsSync(filePath)) {
+    const stats = fs.statSync(filePath);
+    const resolvedPath = path.resolve(filePath);
+    preConfiguredFile = {
+      originalName: path.basename(filePath),
+      fileName: 'preconfigured',
+      filePath: resolvedPath, // Add filePath for media embeds
+      path: resolvedPath,
+      size: stats.size,
+      mimetype: 'application/octet-stream'
+    };
+    console.log(`✓ Pre-configured file: ${preConfiguredFile.originalName}`);
+  } else {
+    console.error(`✗ Pre-configured file not found: ${filePath}`);
+  }
+}
+
+
+// Session tracking functions (set by routes.js)
+let setCurrentInputFileFunc = null;
+let getSessionIdFunc = null;
+
+function setSessionTrackingFunctions(setInputFile, getSessionId) {
+  setCurrentInputFileFunc = setInputFile;
+  getSessionIdFunc = getSessionId;
+}
 
 // Check FFmpeg availability
 // Initialize API configurations from environment variables
@@ -104,8 +138,10 @@ router.get('/configured-providers', (req, res) => {
 router.get('/preconfigured-file', (req, res) => {
   if (preConfiguredFile) {
     // Set this as the current input file for the session
-    const sessionId = getSessionId(req);
-    setCurrentInputFile(sessionId, preConfiguredFile.path);
+    if (setCurrentInputFileFunc && getSessionIdFunc) {
+      const sessionId = getSessionIdFunc(req);
+      setCurrentInputFileFunc(sessionId, preConfiguredFile.path);
+    }
     
     res.json({ file: preConfiguredFile });
   } else {
@@ -116,3 +152,5 @@ router.get('/preconfigured-file', (req, res) => {
 
 module.exports = router;
 module.exports.apiConfigs = apiConfigs;
+module.exports.setPreConfiguredFile = setPreConfiguredFile;
+module.exports.setSessionTrackingFunctions = setSessionTrackingFunctions;

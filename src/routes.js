@@ -12,8 +12,6 @@ const { AIProviderFactory } = require('./services/ai-providers');
 const systemRoutes = require('./routes/system');
 
 
-// Global variable for pre-configured file
-let preConfiguredFile = null;
 
 // Global variable for tracking current input file per session
 const sessionFileTracking = new Map(); // sessionId -> currentInputFile
@@ -61,24 +59,6 @@ function getCurrentInputFile(sessionId) {
   return sessionFileTracking.get(sessionId);
 }
 
-// Set pre-configured file (called from CLI)
-function setPreConfiguredFile(filePath) {
-  if (fs.existsSync(filePath)) {
-    const stats = fs.statSync(filePath);
-    const resolvedPath = path.resolve(filePath);
-    preConfiguredFile = {
-      originalName: path.basename(filePath),
-      fileName: 'preconfigured',
-      filePath: resolvedPath, // Add filePath for media embeds
-      path: resolvedPath,
-      size: stats.size,
-      mimetype: 'application/octet-stream'
-    };
-    console.log(`✓ Pre-configured file: ${preConfiguredFile.originalName}`);
-  } else {
-    console.error(`✗ Pre-configured file not found: ${filePath}`);
-  }
-}
 
 // Import apiConfigs from system routes
 const { apiConfigs } = systemRoutes;
@@ -607,8 +587,8 @@ router.post('/cancel-ffmpeg', async (req, res) => {
 });
 
 
-// Mount system routes
+// Mount system routes (pass session tracking functions)
+systemRoutes.setSessionTrackingFunctions(setCurrentInputFile, getSessionId);
 router.use('/', systemRoutes);
 
 module.exports = router;
-module.exports.setPreConfiguredFile = setPreConfiguredFile;
