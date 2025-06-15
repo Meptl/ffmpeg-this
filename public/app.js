@@ -1095,6 +1095,14 @@ async function executeFFmpegCommand(command, outputFile, messageId) {
             executeBtn.innerHTML = '✅ Executed Successfully';
             executeBtn.classList.remove('executing');
             executeBtn.classList.add('executed');
+        } else if (result.cancelled) {
+            // Handle cancelled execution
+            executeBtn.innerHTML = '🚫 Cancelled';
+            executeBtn.classList.remove('executing');
+            executeBtn.classList.add('cancelled');
+            
+            // SSE should have already closed and shown cancelled message
+            eventSource.close();
         } else {
             // Show error
             executeBtn.innerHTML = '❌ Execution Failed';
@@ -1103,7 +1111,7 @@ async function executeFFmpegCommand(command, outputFile, messageId) {
             
             // Close SSE connection on error
             eventSource.close();
-            appendFFmpegOutput(messageId, `Execution failed: ${result.error}`);
+            appendFFmpegOutput(messageId, `Execution failed: ${result.error || result.message || 'Unknown error'}`);
         }
         
         // Hide cancel button

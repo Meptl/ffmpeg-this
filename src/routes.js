@@ -190,14 +190,15 @@ Operations Reference:
           .replace(/{INPUT_FILE}/g, currentInputFile)
           .replace(/{OUTPUT_FILE}/g, finalOutputFile);
         
-        // Update the current input file for next operation (use the actual output path)
-        setCurrentInputFile(sessionId, finalOutputFile);
+        // DO NOT update the current input file here - wait until command executes successfully
+        // setCurrentInputFile(sessionId, finalOutputFile);
         
         // Create a version with substituted paths for execution but keep placeholders for display
         const executableResponse = {
           ...jsonResponse,
           command: executableCommand,
-          output_file: finalOutputFile
+          output_file: finalOutputFile,
+          input_file: currentInputFile // Include current input file for reference
         };
         
         // Return structured response with both display and executable versions
@@ -444,6 +445,33 @@ router.post('/execute-ffmpeg', async (req, res) => {
       }
     };
     
+    // Check if execution was already cancelled before starting
+    const execIdStr = String(executionId);
+    if (cancelledExecutions.has(execIdStr)) {
+      console.log(`Execution ${execIdStr} was cancelled before starting`);
+      cancelledExecutions.delete(execIdStr);
+      
+      const sseConnection = sseConnections.get(executionId);
+      if (sseConnection) {
+        try {
+          sseConnection.write(`data: ${JSON.stringify({ 
+            type: 'cancelled', 
+            message: 'Execution was cancelled'
+          })}\n\n`);
+          sseConnection.end();
+        } catch (error) {
+          // Connection already closed
+        }
+        sseConnections.delete(executionId);
+      }
+      
+      return res.status(200).json({
+        success: false,
+        cancelled: true,
+        message: 'FFmpeg execution was cancelled'
+      });
+    }
+    
     const result = await ffmpegService.execute({
       command,
       inputFile,
@@ -452,32 +480,60 @@ router.post('/execute-ffmpeg', async (req, res) => {
       onOutput
     });
     
-    // Send completion message via SSE
-    const sseConnection = sseConnections.get(executionId);
-    if (sseConnection) {
-      try {
-        sseConnection.write(`data: ${JSON.stringify({ 
-          type: 'complete', 
-          success: result.success,
-          outputFile: result.outputFile,
-          outputSize: result.outputSize
-        })}\n\n`);
-        sseConnection.end();
-      } catch (error) {
-        // Connection already closed
-      }
-      sseConnections.delete(executionId);
-    }
-    
     if (result.success) {
-      // Update current input file for the session if output was created AND execution wasn't cancelled
-      const execIdStr = String(executionId);
+      // Check if execution was cancelled
       const wasCancelled = cancelledExecutions.has(execIdStr);
+      console.log(`Execution ${execIdStr} completed. Was cancelled: ${wasCancelled}`);
       
-      if (result.outputFile && !wasCancelled) {
-        const sessionId = getSessionId(req);
-        setCurrentInputFile(sessionId, result.outputFile);
+      // Only send completion message and update input file if not cancelled
+      if (!wasCancelled) {
+        // Send completion message via SSE
+        const sseConnection = sseConnections.get(executionId);
+        if (sseConnection) {
+          try {
+            sseConnection.write(`data: ${JSON.stringify({ 
+              type: 'complete', 
+              success: result.success,
+              outputFile: result.outputFile,
+              outputSize: result.outputSize
+            })}\n\n`);
+            sseConnection.end();
+          } catch (error) {
+            // Connection already closed
+          }
+          sseConnections.delete(executionId);
+        }
+        
+        // Update current input file for the session
+        if (result.outputFile) {
+          const sessionId = getSessionId(req);
+          setCurrentInputFile(sessionId, result.outputFile);
+        }
       } else {
+        // Execution was cancelled - send cancelled message instead
+        const sseConnection = sseConnections.get(executionId);
+        if (sseConnection) {
+          try {
+            sseConnection.write(`data: ${JSON.stringify({ 
+              type: 'cancelled', 
+              message: 'Execution was cancelled'
+            })}\n\n`);
+            sseConnection.end();
+          } catch (error) {
+            // Connection already closed
+          }
+          sseConnections.delete(executionId);
+        }
+        
+        // Clean up partial output file if it exists
+        if (result.outputFile && fs.existsSync(result.outputFile)) {
+          try {
+            fs.unlinkSync(result.outputFile);
+            console.log(`Deleted partial output file: ${result.outputFile}`);
+          } catch (err) {
+            console.error(`Failed to delete partial output file: ${err.message}`);
+          }
+        }
       }
       
       // Clean up cancelled execution tracking
@@ -485,27 +541,43 @@ router.post('/execute-ffmpeg', async (req, res) => {
       
       res.json({
         success: true,
-        outputFile: result.outputFile,
-        outputSize: result.outputSize,
+        outputFile: wasCancelled ? null : result.outputFile,
+        outputSize: wasCancelled ? null : result.outputSize,
         stdout: result.stdout,
         stderr: result.stderr,
-        message: result.outputFile ? 
-          'FFmpeg command executed successfully' : 
-          'FFmpeg command executed successfully (no output file created)'
+        message: wasCancelled ? 
+          'FFmpeg execution was cancelled' : 
+          (result.outputFile ? 
+            'FFmpeg command executed successfully' : 
+            'FFmpeg command executed successfully (no output file created)')
       });
     }
   } catch (error) {
+    // Check if this was a cancelled execution
+    const execIdStr = String(req.body.executionId);
+    const wasCancelled = cancelledExecutions.has(execIdStr);
     
-    // Send error message via SSE
+    if (wasCancelled) {
+      console.log(`Execution ${execIdStr} was cancelled - not updating input file`);
+    }
+    
+    // Send appropriate message via SSE based on whether it was cancelled
     const sseConnection = sseConnections.get(req.body.executionId);
     if (sseConnection) {
       try {
-        sseConnection.write(`data: ${JSON.stringify({ 
-          type: 'error', 
-          message: error.message,
-          stderr: error.stderr,
-          stdout: error.stdout
-        })}\n\n`);
+        if (wasCancelled) {
+          sseConnection.write(`data: ${JSON.stringify({ 
+            type: 'cancelled', 
+            message: 'Execution was cancelled'
+          })}\n\n`);
+        } else {
+          sseConnection.write(`data: ${JSON.stringify({ 
+            type: 'error', 
+            message: error.message,
+            stderr: error.stderr,
+            stdout: error.stdout
+          })}\n\n`);
+        }
         sseConnection.end();
       } catch (sseError) {
         // Connection already closed
@@ -514,9 +586,18 @@ router.post('/execute-ffmpeg', async (req, res) => {
     }
     
     // Clean up cancelled execution tracking
-    cancelledExecutions.delete(String(req.body.executionId));
+    cancelledExecutions.delete(execIdStr);
     
-    if (error.code !== undefined) {
+    if (wasCancelled) {
+      // Return a cancelled status instead of error for cancelled executions
+      res.status(200).json({
+        success: false,
+        cancelled: true,
+        message: 'FFmpeg execution was cancelled',
+        stderr: error.stderr,
+        stdout: error.stdout
+      });
+    } else if (error.code !== undefined) {
       res.status(500).json({
         error: error.message,
         stderr: error.stderr,
@@ -540,6 +621,7 @@ router.post('/cancel-ffmpeg', async (req, res) => {
     // Mark execution as cancelled
     const execIdStr = String(executionId);
     cancelledExecutions.add(execIdStr);
+    console.log(`Marked execution ${execIdStr} as cancelled`);
     
     const result = ffmpegService.cancel(executionId);
     
