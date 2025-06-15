@@ -59,18 +59,8 @@ function getCurrentInputFile(sessionId) {
   return sessionFileTracking.get(sessionId);
 }
 
-
 // Import apiConfigs from system routes
 const { apiConfigs } = systemRoutes;
-
-// Log which providers are configured (without exposing keys)
-console.log('Configured providers:');
-const configuredProviders = AIProviderFactory.getConfiguredProviders();
-configuredProviders.forEach(provider => {
-  console.log(`✓ ${provider.id}`);
-});
-
-
 
 // Chat endpoint
 router.post('/chat', async (req, res) => {
@@ -434,7 +424,6 @@ router.post('/execute-ffmpeg', async (req, res) => {
   try {
     const { command, inputFile, outputFile, executionId } = req.body;
     
-    console.log(`Starting execution with ID: ${executionId} (type: ${typeof executionId})`);
     
     if (!command) {
       return res.status(400).json({ error: 'No command provided' });
@@ -482,15 +471,11 @@ router.post('/execute-ffmpeg', async (req, res) => {
       // Update current input file for the session if output was created AND execution wasn't cancelled
       const execIdStr = String(executionId);
       const wasCancelled = cancelledExecutions.has(execIdStr);
-      console.log(`Execution ${execIdStr} (type: ${typeof execIdStr}): success=${result.success}, outputFile=${result.outputFile}, wasCancelled=${wasCancelled}`);
-      console.log(`Cancelled executions contains: ${Array.from(cancelledExecutions)}`);
       
       if (result.outputFile && !wasCancelled) {
         const sessionId = getSessionId(req);
-        console.log(`Updating session input file to: ${result.outputFile}`);
         setCurrentInputFile(sessionId, result.outputFile);
       } else {
-        console.log(`NOT updating session input file. outputFile=${result.outputFile}, wasCancelled=${wasCancelled}`);
       }
       
       // Clean up cancelled execution tracking
@@ -553,9 +538,7 @@ router.post('/cancel-ffmpeg', async (req, res) => {
     
     // Mark execution as cancelled
     const execIdStr = String(executionId);
-    console.log(`Marking execution ${execIdStr} (type: ${typeof execIdStr}) as cancelled`);
     cancelledExecutions.add(execIdStr);
-    console.log(`Cancelled executions now contains: ${Array.from(cancelledExecutions)}`);
     
     const result = ffmpegService.cancel(executionId);
     

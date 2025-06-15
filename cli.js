@@ -65,7 +65,7 @@ app.get('/api/ffmpeg-status', async (req, res) => {
   }
   
   app.listen(PORT, () => {
-  console.log(`✨ Server running at http://localhost:${PORT}`);
+  console.log(`Server running at http://localhost:${PORT}`);
   
     if (options.open) {
       open(`http://localhost:${PORT}`);
@@ -75,6 +75,6 @@ app.get('/api/ffmpeg-status', async (req, res) => {
 
 // Handle graceful shutdown
 process.on('SIGINT', () => {
-  console.log('\n👋 Shutting down server...');
+  console.log('\nShutting down server...');
   process.exit();
 });

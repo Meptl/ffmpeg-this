@@ -103,8 +103,6 @@ class FFmpegService {
               const scaleX = effectiveSourceWidth / displayRegion.displayWidth;
               const scaleY = effectiveSourceHeight / displayRegion.displayHeight;
 
-              console.log("X scalar: ", scaleX);
-              console.log("Y scalar: ", scaleY);
 
               // Scale the region to true display coordinates
               let scaledRegion = {
@@ -114,7 +112,6 @@ class FFmpegService {
                 height: Math.round(displayRegion.height * scaleY)
               };
 
-              console.log("scaled region: ", scaledRegion);
               
               resolve({
                 region: scaledRegion
