@@ -90,20 +90,27 @@ class APIService {
     
     // Send chat message
     async sendChatMessage(provider, message, conversationHistory, useStructuredMode, userInput, preCalculatedRegion) {
+        const requestData = {
+            provider,
+            message,
+            conversationHistory,
+            useStructuredMode,
+            userInput,
+            preCalculatedRegion
+        };
+        
+        console.log('Sending to AI backend:', JSON.stringify(requestData, null, 2));
+        
         const response = await this.fetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                provider,
-                message,
-                conversationHistory,
-                useStructuredMode,
-                userInput,
-                preCalculatedRegion
-            })
+            body: JSON.stringify(requestData)
         });
         
-        return response.json();
+        const responseData = await response.json();
+        console.log('Received from AI backend:', JSON.stringify(responseData, null, 2));
+        
+        return responseData;
     }
     
     // Calculate region from display coordinates

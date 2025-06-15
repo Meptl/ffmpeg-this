@@ -495,7 +495,6 @@ router.post('/execute-ffmpeg', async (req, res) => {
       });
     }
   } catch (error) {
-    console.error('Error executing FFmpeg:', error);
     
     // Send error message via SSE
     const sseConnection = sseConnections.get(req.body.executionId);
