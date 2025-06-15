@@ -47,7 +47,6 @@ function initializeElements() {
         
         // System settings
         ffmpegPath: document.getElementById('ffmpeg-path'),
-        showRawMessages: document.getElementById('show-raw-messages'),
         autoExecuteCommands: document.getElementById('auto-execute-commands')
     };
 }
@@ -122,9 +121,6 @@ async function loadCurrentSettings() {
         }
         
         // Update system settings checkboxes
-        if (elements.showRawMessages) {
-            elements.showRawMessages.checked = state.showRawMessages;
-        }
         
         if (elements.autoExecuteCommands) {
             elements.autoExecuteCommands.checked = state.autoExecuteCommands;
@@ -176,15 +172,13 @@ async function saveSettings(suppressAlert = false) {
         const persistentData = {
             ffmpegPath: elements.ffmpegPath?.value || '',
             autoExecuteCommands: elements.autoExecuteCommands?.checked || false,
-            showRawMessages: elements.showRawMessages?.checked || false
         };
         
         await api.saveSettings(persistentData);
         
         // Update state
         updateState({
-            autoExecuteCommands: persistentData.autoExecuteCommands,
-            showRawMessages: persistentData.showRawMessages
+            autoExecuteCommands: persistentData.autoExecuteCommands
         });
         
         settingsChanged = false;
@@ -241,18 +235,6 @@ function setupEventListeners() {
             closeModal();
         }
     });
-    
-    // Show raw messages toggle
-    if (elements.showRawMessages) {
-        elements.showRawMessages.addEventListener('change', (e) => {
-            updateState({ showRawMessages: e.target.checked });
-            
-            // Trigger callback if defined
-            if (window.onShowRawMessagesChanged) {
-                window.onShowRawMessagesChanged(e.target.checked);
-            }
-        });
-    }
     
     // Auto execute toggle
     if (elements.autoExecuteCommands) {

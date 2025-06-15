@@ -144,12 +144,7 @@ class MessageFormatter {
 class MessageManager {
   constructor() {
     this.messages = [];
-    this.showRawMode = false;
     this.messageIdCounter = 0;
-  }
-
-  setDisplayMode(showRaw) {
-    this.showRawMode = showRaw;
   }
 
   generateId() {
@@ -161,12 +156,8 @@ class MessageManager {
       id: this.generateId(),
       type: 'user',
       timestamp: Date.now(),
-      humanView: userInput,
-      rawView: structuredData ? JSON.stringify(structuredData, null, 2) : userInput,
-      structuredData,
-      // Store both for compatibility with existing UI
       content: userInput,
-      formattedJson: structuredData ? JSON.stringify(structuredData, null, 2) : null
+      structuredData
     };
     
     this.messages.push(message);
@@ -178,13 +169,9 @@ class MessageManager {
       id: this.generateId(),
       type: 'assistant',
       timestamp: Date.now(),
-      rawView: rawResponse,
-      humanView: this._formatAssistantResponse(parsedResponse || rawResponse),
+      content: this._formatAssistantResponse(parsedResponse || rawResponse),
       parsedResponse,
-      executableData,
-      // Store for compatibility
-      content: rawResponse,
-      executableResponse: executableData
+      executableData
     };
     
     this.messages.push(message);
@@ -252,10 +239,7 @@ class MessageManager {
   }
 
   getMessages() {
-    return this.messages.map(msg => ({
-      ...msg,
-      displayContent: this.showRawMode ? msg.rawView : msg.humanView
-    }));
+    return this.messages;
   }
 
   getConversationHistory(limit = 10) {
@@ -265,7 +249,9 @@ class MessageManager {
     
     return relevantMessages.map(msg => ({
       role: msg.type === 'user' ? 'user' : 'assistant',
-      content: msg.rawView
+      content: msg.type === 'user' ? 
+        (msg.structuredData ? JSON.stringify(msg.structuredData) : msg.content) : 
+        (typeof msg.content === 'object' ? JSON.stringify(msg.content) : msg.content)
     }));
   }
 

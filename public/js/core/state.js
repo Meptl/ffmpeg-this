@@ -19,7 +19,6 @@ const state = {
     mostRecentMediaPath: null,
     
     // UI preferences
-    showRawMessages: false,
     autoExecuteCommands: true,
     
     // Settings tracking
@@ -86,9 +85,6 @@ async function initializeState() {
                 state.autoExecuteCommands = settings.autoExecuteCommands;
             }
             
-            if (settings.showRawMessages !== undefined) {
-                state.showRawMessages = settings.showRawMessages;
-            }
         }
     } catch (error) {
         console.error('Error initializing state:', error);

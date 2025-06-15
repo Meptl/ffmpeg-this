@@ -13,7 +13,6 @@ let configuredProviders = [];
 let ffmpegAvailable = false;
 let currentFile = null;
 let initialFile = null;
-let showRawMessages = false;
 let autoExecuteCommands = true;
 let mostRecentMediaPath = null;
 
@@ -58,30 +57,13 @@ async function initialize() {
     
     // Get state values
     const currentState = getState();
-    showRawMessages = currentState.showRawMessages;
     autoExecuteCommands = currentState.autoExecuteCommands;
-    
-    // Apply loaded settings
-    messageManager.setDisplayMode(showRawMessages);
     
     // Initialize settings module
     initializeSettings();
     
     // Initialize region selection
     initializeRegionSelection();
-    
-    // Setup callbacks for settings changes
-    window.onShowRawMessagesChanged = (value) => {
-        showRawMessages = value;
-        messageManager.setDisplayMode(value);
-        reRenderAllMessages();
-        
-        if (value && messageManager.getSystemPrompt()) {
-            showPromptHeaderMessage();
-        } else {
-            hidePromptHeaderMessage();
-        }
-    };
     
     window.onSettingsSaved = async () => {
         // Re-check ffmpeg status and reload providers
@@ -332,11 +314,6 @@ function showChatInterface() {
     const messages = messageManager.getMessages();
     if (messages.length > 0) {
         reRenderAllMessages();
-    } else {
-        // Show prompt header if raw mode is enabled and we have a system prompt
-        if (showRawMessages && messageManager.getSystemPrompt()) {
-            showPromptHeaderMessage();
-        }
     }
 }
 
@@ -522,12 +499,8 @@ async function sendMessage() {
     // Store user message in message manager
     const userMsg = messageManager.addUserMessage(userInput, jsonMessage);
     
-    // Add message to UI - show formatted JSON in raw mode, user input in structured mode
-    if (showRawMessages) {
-        addMessageToUI('user', formattedJsonMessage);
-    } else {
-        addMessageToUI('user', userInput);
-    }
+    // Add message to UI
+    addMessageToUI('user', userInput);
     messageInput.value = '';
     
     // Exit selection mode but keep visual selection after sending message
@@ -625,7 +598,7 @@ function addMessage(type, content, isLoading = false, hasParsingWarning = false)
 }
 
 
-// Re-render all messages based on current showRawMessages setting
+// Re-render all messages
 function reRenderAllMessages() {
     messagesDiv.innerHTML = '';
     
@@ -642,28 +615,14 @@ function reRenderAllMessages() {
     });
     mostRecentMediaPath = lastMediaPath;
     
-    // Show prompt header if raw mode is enabled and we have messages
-    if (showRawMessages && messageManager.getSystemPrompt() && messages.length > 0) {
-        showPromptHeaderMessage();
-    }
-    
     messages.forEach((msgData) => {
         if (msgData.type === 'initial-file') {
             // Re-render initial file embed
             addInitialFileEmbed();
         } else if (msgData.type === 'assistant' && msgData.parsedResponse) {
-            if (showRawMessages) {
-                addMessageToUI('assistant', msgData.content || msgData.rawView);
-            } else {
-                addStructuredMessageToUI('assistant', msgData.content || msgData.rawView, msgData.parsedResponse, msgData.executableResponse || msgData.executableData);
-            }
+            addStructuredMessageToUI('assistant', msgData.content, msgData.parsedResponse, msgData.executableData);
         } else if (msgData.type === 'user') {
-            // User message with both formats available
-            if (showRawMessages) {
-                addMessageToUI('user', msgData.formattedJson || msgData.rawView);
-            } else {
-                addMessageToUI('user', msgData.content || msgData.humanView);
-            }
+            addMessageToUI('user', msgData.content);
         } else if (msgData.type === 'output-media') {
             // Re-render output media messages
             const messageDiv = document.createElement('div');
@@ -684,33 +643,6 @@ function reRenderAllMessages() {
             addMessageToUI(msgData.type, msgData.content || msgData.humanView || msgData.rawView);
         }
     });
-}
-
-// Show prompt header message
-function showPromptHeaderMessage() {
-    const existingHeader = document.getElementById('prompt-header-message');
-    if (existingHeader) return; // Already shown
-    
-    const headerDiv = document.createElement('div');
-    headerDiv.id = 'prompt-header-message';
-    headerDiv.className = 'message system prompt-header';
-    headerDiv.innerHTML = `
-        <div class="message-header">System Prompt</div>
-        <div class="message-content">
-            <pre><code>${formatMessageContent(messageManager.getSystemPrompt())}</code></pre>
-        </div>
-    `;
-    
-    messagesDiv.insertBefore(headerDiv, messagesDiv.firstChild);
-    messagesDiv.scrollTop = messagesDiv.scrollHeight;
-}
-
-// Hide prompt header message
-function hidePromptHeaderMessage() {
-    const existingHeader = document.getElementById('prompt-header-message');
-    if (existingHeader) {
-        existingHeader.remove();
-    }
 }
 
 // Add message to UI only (without storing data)
@@ -748,12 +680,7 @@ function removeMessage(id) {
 // Add structured message to UI and store data
 function addStructuredMessage(type, rawContent, parsedResponse, executableResponse = null) {
     messageManager.addAssistantMessage(rawContent, parsedResponse, executableResponse);
-    
-    if (showRawMessages) {
-        return addMessageToUI(type, rawContent);
-    } else {
-        return addStructuredMessageToUI(type, rawContent, parsedResponse, executableResponse);
-    }
+    return addStructuredMessageToUI(type, rawContent, parsedResponse, executableResponse);
 }
 
 // Add structured message to UI only (without storing data)
