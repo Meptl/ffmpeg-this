@@ -157,6 +157,13 @@ h1 {
     opacity: 0.8;
 }
 
+.parse-warning {
+    color: #ff6b6b;
+    font-size: 1rem;
+    margin-left: 0.5rem;
+    cursor: help;
+}
+
 .message-content {
     line-height: 1.5;
 }

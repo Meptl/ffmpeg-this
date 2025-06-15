@@ -208,6 +208,7 @@ Remember: Focus on generating practical, efficient commands that accomplish the 
     const response = chatResponse.content;
     
     // Always try to parse structured response
+    let parseError = null;
     try {
       // Try to parse JSON response
       const jsonResponse = JSON.parse(response);
@@ -242,11 +243,15 @@ Remember: Focus on generating practical, efficient commands that accomplish the 
         });
         return;
       }
-    } catch (parseError) {
+    } catch (error) {
       // If JSON parsing fails, fall back to regular response
+      parseError = true;
     }
     
-    res.json({ response });
+    res.json({ 
+      response: chatResponse.content, // Original response for display
+      parseError: parseError // Boolean indicating parse failure
+    });
   } catch (error) {
     console.error(`Error with ${provider}:`, error);
     res.status(500).json({ error: error.message });

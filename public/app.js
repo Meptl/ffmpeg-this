@@ -580,23 +580,29 @@ async function sendMessage() {
         removeMessage(loadingId);
         
         if (response.ok) {
-            // Try to parse the response as JSON even if not marked as structured
-            let parsedJson = null;
-            try {
-                parsedJson = JSON.parse(data.response);
-            } catch (e) {
-                // Not JSON, that's okay
-            }
-            
-            if (data.isStructured && data.parsedResponse) {
+            // Check if there was a parse error on the backend
+            if (data.parseError) {
+                // Show the response with a warning about parsing failure
+                addMessage('assistant', data.response, false, true);
+            } else if (data.isStructured && data.parsedResponse) {
                 // Always use structured message when we have parsed data
                 addStructuredMessage('assistant', data.response, data.parsedResponse, data.executableResponse);
-            } else if (parsedJson && (parsedJson.error || parsedJson.command)) {
-                // We have valid JSON with error or command, display it structured
-                addStructuredMessage('assistant', data.response, parsedJson, null);
             } else {
-                // Fallback to regular message without warning
-                addMessage('assistant', data.response, false, false);
+                // Try to parse the response as JSON even if not marked as structured
+                let parsedJson = null;
+                try {
+                    parsedJson = JSON.parse(data.response);
+                } catch (e) {
+                    // Not JSON, that's okay
+                }
+                
+                if (parsedJson && (parsedJson.error || parsedJson.command)) {
+                    // We have valid JSON with error or command, display it structured
+                    addStructuredMessage('assistant', data.response, parsedJson, null);
+                } else {
+                    // Fallback to regular message without warning
+                    addMessage('assistant', data.response, false, false);
+                }
             }
             
         } else {
@@ -723,7 +729,7 @@ function addMessageToUI(type, content, isLoading = false, hasParsingWarning = fa
                       type === 'info' ? 'Info' : 'System';
     
     messageDiv.innerHTML = `
-        <div class="message-header">${headerText}</div>
+        <div class="message-header">${headerText}${hasParsingWarning ? '<span class="parse-warning" title="Failed to parse JSON response"> ⚠️</span>' : ''}</div>
         <div class="message-content">${formattedContent}</div>
     `;
     
