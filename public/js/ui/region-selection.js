@@ -219,7 +219,7 @@ class RegionSelection {
             const otherBtn = otherEmbed.querySelector('.region-select-btn');
             if (otherBtn) {
                 otherBtn.classList.remove('active');
-                otherBtn.innerHTML = '✂️';
+                otherBtn.innerHTML = '<img src="assets/crop.svg" alt="Select Region" width="20" height="20" style="vertical-align: middle;">';
             }
         }
         
@@ -227,7 +227,7 @@ class RegionSelection {
             // Disable selection mode
             container.classList.remove('selection-mode');
             button.classList.remove('active');
-            button.innerHTML = '✂️';
+            button.innerHTML = '<img src="assets/crop.svg" alt="Select Region" width="20" height="20" style="vertical-align: middle;">';
             updateState({ activeSelectionContainer: null });
             
             // Re-enable video interaction
@@ -239,7 +239,7 @@ class RegionSelection {
             // Enable selection mode
             container.classList.add('selection-mode');
             button.classList.add('active');
-            button.innerHTML = '❌';
+            button.innerHTML = '<img src="assets/crop.svg" alt="Select Region" width="20" height="20" style="vertical-align: middle; opacity: 0.5;">';
             updateState({ activeSelectionContainer: container });
             
             // Disable video interaction while keeping controls visible

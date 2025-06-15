@@ -96,6 +96,12 @@ sendBtn.addEventListener('click', sendMessage);
 messageInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') sendMessage();
 });
+// Disable send button when input is empty
+messageInput.addEventListener('input', (e) => {
+    sendBtn.disabled = !messageInput.value.trim();
+});
+// Initial state - disable if empty
+sendBtn.disabled = !messageInput.value.trim();
 providerSelect.addEventListener('change', (e) => {
     currentProvider = e.target.value;
     updateState({ currentProvider });
@@ -262,7 +268,7 @@ async function loadConfiguredProviders() {
             // Add configured providers to dropdown
             providerSelect.disabled = false;
             messageInput.disabled = false;
-            sendBtn.disabled = false;
+            sendBtn.disabled = !messageInput.value.trim(); // Check if input has text
             
             configuredProviders.forEach((provider, index) => {
                 const option = document.createElement('option');
@@ -502,6 +508,7 @@ async function sendMessage() {
     // Add message to UI
     addMessageToUI('user', userInput);
     messageInput.value = '';
+    sendBtn.disabled = true; // Disable send button after clearing input
     
     // Exit selection mode but keep visual selection after sending message
     if (state.regionSelection) {
@@ -511,7 +518,7 @@ async function sendMessage() {
             const activeBtn = state.activeSelectionContainer.closest('.media-embed').querySelector('.region-select-btn');
             if (activeBtn) {
                 activeBtn.classList.remove('active');
-                activeBtn.innerHTML = '✂️';
+                activeBtn.innerHTML = '<img src="assets/crop.svg" alt="Select Region" width="20" height="20" style="vertical-align: middle;">';
             }
             
             // Re-enable video controls if needed
@@ -788,11 +795,8 @@ function createMediaEmbed(filePath, fileName, isResponseMedia = false, hideDownl
         return htmlEntities[match];
     });
     
-    // Download icon SVG - resembles Firefox download icon (downward arrow to tray)
-    const downloadIcon = `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" class="download-icon">
-        <path d="M8 11L3 6h3V1h4v5h3l-5 5z"/>
-        <rect x="1" y="12" width="14" height="2" rx="1"/>
-    </svg>`;
+    // Use the download.svg asset
+    const downloadIcon = `<img src="assets/download.svg" alt="Download" width="20" height="20" style="vertical-align: middle;">`;
     
     const downloadButton = hideDownloadButton ? '' : `<button class="download-btn" onclick="downloadFile('${filePath.replace(/'/g, "\\'")}', '${safeFileName.replace(/'/g, "\\'")}')">
         ${downloadIcon}
@@ -832,7 +836,7 @@ function createMediaEmbed(filePath, fileName, isResponseMedia = false, hideDownl
                             <div class="region-selection-overlay"></div>
                             <button class="clear-region-btn" onclick="clearRegionSelection(this)">Clear</button>
                         </div>
-                        ${showRegionButton ? '<button class="region-select-btn" onclick="toggleRegionSelectMode(this)" title="Select Region">✂️</button>' : ''}
+                        ${showRegionButton ? '<button class="region-select-btn" onclick="toggleRegionSelectMode(this)" title="Select Region"><img src="assets/crop.svg" alt="Select Region" width="20" height="20" style="vertical-align: middle;"></button>' : ''}
                         ${downloadButton}
                     </div>`;
             } else {
@@ -859,7 +863,7 @@ function createMediaEmbed(filePath, fileName, isResponseMedia = false, hideDownl
                             <div class="region-selection-overlay"></div>
                             <button class="clear-region-btn" onclick="clearRegionSelection(this)">Clear</button>
                         </div>
-                        ${showRegionButton ? '<button class="region-select-btn" onclick="toggleRegionSelectMode(this)" title="Select Region">✂️</button>' : ''}
+                        ${showRegionButton ? '<button class="region-select-btn" onclick="toggleRegionSelectMode(this)" title="Select Region"><img src="assets/crop.svg" alt="Select Region" width="20" height="20" style="vertical-align: middle;"></button>' : ''}
                         ${downloadButton}
                     </div>`;
             } else {
