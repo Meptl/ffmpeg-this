@@ -137,7 +137,7 @@ header > * {
     width: 64px;
     height: 64px;
     position: relative;
-    top: -8px;
+    top: -16px;
 }
 
 .help-btn:hover {
