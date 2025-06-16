@@ -112,6 +112,9 @@ router.post('/chat', async (req, res) => {
     
     const formattedJsonMessage = JSON.stringify(jsonMessage, null, 2);
     
+    // Log the JSON message being sent
+    console.log('Sending JSON message to AI:', formattedJsonMessage);
+    
     // Hardcoded system prompt
     const systemPrompt = `You are an FFmpeg command generator.
 The user will ask you a series of operations to perform.
@@ -136,6 +139,8 @@ For every response, you must provide output in this exact JSON format:
   "output_extension": "ext",
   "error": null | "error description"
 }
+
+CRITICAL: Return ONLY the JSON object. Do not wrap it in markdown code blocks (\`\`\`json), do not add any text before or after the JSON. The response must start with { and end with }
 
 Rules:
 - ALWAYS use {INPUT_FILE} and {OUTPUT_FILE} placeholders - never use actual paths
@@ -173,11 +178,22 @@ Operations Reference:
     
     const response = chatResponse.content;
     
+    // Log raw response for debugging
+    console.log('Raw AI response:', response);
+    
+    // Strip markdown code blocks if present
+    let cleanedResponse = response;
+    const markdownJsonRegex = /```(?:json)?\s*\n?([\s\S]*?)\n?```/;
+    const match = response.match(markdownJsonRegex);
+    if (match) {
+      cleanedResponse = match[1].trim();
+    }
+    
     // Always try to parse structured response
     let parseError = null;
     try {
       // Try to parse JSON response
-      const jsonResponse = JSON.parse(response);
+      const jsonResponse = JSON.parse(cleanedResponse);
       
       // If we got a valid JSON response with command and output_extension
       if (jsonResponse.command && jsonResponse.output_extension) {
