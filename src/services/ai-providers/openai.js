@@ -23,13 +23,26 @@ class OpenAIProvider extends BaseAIProvider {
       // Remove maxTokens from options to avoid conflict
       const { maxTokens, ...otherOptions } = options;
       
-      const response = await this.client.chat.completions.create({
-        model: options.model || this.config.model || 'gpt-4',
+      const model = options.model || this.config.model || 'gpt-4-turbo-preview';
+      console.log('OpenAI chat - model selection:', {
+        'options.model': options.model,
+        'this.config.model': this.config.model,
+        'final model': model
+      });
+      
+      console.log('OpenAI otherOptions:', otherOptions);
+      
+      const requestParams = {
         messages: this.formatMessages(messages),
         temperature: options.temperature ?? 0.7,
         max_tokens: maxTokens || 1000,
-        ...otherOptions
-      });
+        ...otherOptions,
+        model: model  // Put model last to ensure it's not overridden
+      };
+      
+      console.log('OpenAI final request params:', requestParams);
+      
+      const response = await this.client.chat.completions.create(requestParams);
 
       return {
         content: this.extractContent(response),

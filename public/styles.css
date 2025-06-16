@@ -56,8 +56,8 @@ header > * {
 
 .header-controls {
     position: absolute;
-    right: -30px;
-    top: 14px;
+    right: -28px;
+    top: 2px;
     transform: translateY(-50%);
 
     display: flex;

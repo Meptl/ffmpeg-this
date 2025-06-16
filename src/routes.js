@@ -71,6 +71,7 @@ router.post('/chat', async (req, res) => {
   }
   
   const config = apiConfigs[provider];
+  console.log(`Config for provider ${provider}:`, config);
   
   // Validate provider configuration using factory
   try {
@@ -111,8 +112,7 @@ router.post('/chat', async (req, res) => {
     };
     
     const formattedJsonMessage = JSON.stringify(jsonMessage, null, 2);
-    
-    // Log the JSON message being sent
+
     console.log('Sending JSON message to AI:', formattedJsonMessage);
     
     // Hardcoded system prompt
@@ -139,8 +139,6 @@ For every response, you must provide output in this exact JSON format:
   "output_extension": "ext",
   "error": null | "error description"
 }
-
-CRITICAL: Return ONLY the JSON object. Do not wrap it in markdown code blocks (\`\`\`json), do not add any text before or after the JSON. The response must start with { and end with }
 
 Rules:
 - ALWAYS use {INPUT_FILE} and {OUTPUT_FILE} placeholders - never use actual paths

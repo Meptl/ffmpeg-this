@@ -17,12 +17,14 @@ class DeepSeekProvider extends BaseAIProvider {
     }
 
     try {
+      // Extract only the options we want to pass through
+      const { model, temperature, maxTokens, ...otherOptions } = options;
+      
       const response = await axios.post(this.endpoint, {
-        model: options.model || this.config.model || 'deepseek-chat',
+        model: model || this.config.model || 'deepseek-chat',
         messages: this.formatMessages(messages),
-        temperature: options.temperature ?? 0.7,
-        max_tokens: options.maxTokens || 1000,
-        ...options
+        temperature: temperature ?? 0.7,
+        max_tokens: maxTokens || 1000
       }, {
         headers: {
           'Content-Type': 'application/json',
@@ -69,10 +71,15 @@ class DeepSeekProvider extends BaseAIProvider {
   handleError(error) {
     if (error.response) {
       const status = error.response.status;
-      const message = error.response.data?.error?.message || error.message;
+      const errorData = error.response.data;
+      const message = errorData?.error?.message || errorData?.message || error.message;
       
       if (status === 401) {
         throw new Error('Invalid DeepSeek API key');
+      } else if (status === 422) {
+        // Log the full error details for 422 errors
+        console.error('DeepSeek 422 error details:', errorData);
+        throw new Error(`DeepSeek validation error: ${message}`);
       } else if (status === 429) {
         throw new Error('DeepSeek rate limit exceeded. Please try again later.');
       } else if (status === 500 || status === 503) {

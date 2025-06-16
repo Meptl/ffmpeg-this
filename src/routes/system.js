@@ -116,12 +116,15 @@ router.post('/config', (req, res) => {
       // Only set the value if it's not empty string, null, or undefined
       if (value !== '' && value !== null && value !== undefined) {
         filteredConfig[key] = value;
-      } else if (key === 'model') {
-        // For model specifically, if empty, remove it so defaults can work
-        delete apiConfigs[provider][key];
       }
     }
+    // Merge configs, keeping existing values for keys not in filteredConfig
     apiConfigs[provider] = { ...apiConfigs[provider], ...filteredConfig };
+    
+    // If model is explicitly empty string, remove it to allow defaults
+    if (config.model === '') {
+      delete apiConfigs[provider].model;
+    }
     res.json({ success: true });
   } else {
     res.status(400).json({ error: 'Invalid provider' });
