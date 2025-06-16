@@ -354,7 +354,8 @@ function addInitialFileEmbed() {
         messagesDiv.insertBefore(messageDiv, messagesDiv.firstChild);
     }
     
-    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    // Scroll to bottom after delay
+    scrollToBottomAfterDelay();
 }
 
 // Check ffmpeg status
@@ -673,7 +674,7 @@ function addMessageToUI(type, content, isLoading = false, hasParsingWarning = fa
     `;
     
     messagesDiv.appendChild(messageDiv);
-    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    scrollToBottomAfterDelay();
     
     return id;
 }
@@ -745,7 +746,7 @@ function addStructuredMessageToUI(type, rawContent, parsedResponse, executableRe
     messageDiv.innerHTML = structuredHTML;
     
     messagesDiv.appendChild(messageDiv);
-    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    scrollToBottomAfterDelay();
     
     // Auto-execute if enabled and there's no error
     if (autoExecuteCommands && !parsedResponse.error && executableResponse) {
@@ -1160,6 +1161,8 @@ function appendFFmpegOutput(messageId, content) {
     if (outputContent) {
         outputContent.innerHTML += content.replace(/\n/g, '<br>').replace(/ /g, '&nbsp;');
         outputContent.scrollTop = outputContent.scrollHeight;
+        // Also scroll the main messages container after a delay
+        scrollToBottomAfterDelay();
     }
 }
 
@@ -1272,7 +1275,7 @@ function addExecutionResultMessage(result, parentMessageId) {
         addOutputMediaMessage(result.outputFile, id);
     }
     
-    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    scrollToBottomAfterDelay();
     
     return id;
 }
@@ -1313,8 +1316,8 @@ function addOutputMediaMessage(outputFilePath, afterMessageId) {
         messagesDiv.appendChild(messageDiv);
     }
     
-    // Scroll to bottom after adding media
-    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    // Scroll to bottom after delay
+    scrollToBottomAfterDelay();
     
     return id;
 }
@@ -1349,9 +1352,6 @@ document.addEventListener('mouseover', (e) => {
         if (mediaElement) {
             hoveredMessage = message;
             hoveredImage = mediaElement;
-            // Add subtle hover indication to the message
-            message.style.outline = '2px solid rgba(0, 123, 255, 0.3)';
-            message.style.outlineOffset = '2px';
         }
     }
 });
@@ -1362,8 +1362,6 @@ document.addEventListener('mouseout', (e) => {
     if (message && message === hoveredMessage) {
         // Check if we're moving to another element within the same message
         if (!e.relatedTarget || !message.contains(e.relatedTarget)) {
-            message.style.outline = '';
-            message.style.outlineOffset = '';
             hoveredMessage = null;
             hoveredImage = null;
         }
@@ -1505,4 +1503,11 @@ if (!document.getElementById('copy-feedback-styles')) {
         }
     `;
     document.head.appendChild(style);
+}
+
+// Helper function to scroll to bottom after adding message
+function scrollToBottomAfterDelay() {
+    setTimeout(() => {
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }, 150);
 }
