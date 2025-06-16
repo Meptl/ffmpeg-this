@@ -109,6 +109,8 @@ sendBtn.disabled = !messageInput.value.trim();
 providerSelect.addEventListener('change', (e) => {
     currentProvider = e.target.value;
     updateState({ currentProvider });
+    // Save to localStorage
+    localStorage.setItem('selectedAIProvider', currentProvider);
 });
 // Settings module handles these events now
 // Event listener moved to settings modal
@@ -274,18 +276,33 @@ async function loadConfiguredProviders() {
             messageInput.disabled = false;
             sendBtn.disabled = !messageInput.value.trim(); // Check if input has text
             
+            // Get saved provider from localStorage
+            const savedProvider = localStorage.getItem('selectedAIProvider');
+            let providerFound = false;
+            
             configuredProviders.forEach((provider, index) => {
                 const option = document.createElement('option');
                 option.value = provider.id;
                 option.textContent = provider.name;
                 providerSelect.appendChild(option);
                 
-                // Set first provider as current
-                if (index === 0) {
+                // Check if this is the saved provider and it's still available
+                if (savedProvider === provider.id) {
+                    providerFound = true;
                     currentProvider = provider.id;
+                    providerSelect.value = provider.id;
                     updateState({ currentProvider });
                 }
             });
+            
+            // If saved provider not found or no saved provider, use first available
+            if (!providerFound && configuredProviders.length > 0) {
+                currentProvider = configuredProviders[0].id;
+                providerSelect.value = configuredProviders[0].id;
+                updateState({ currentProvider });
+                // Save the new selection
+                localStorage.setItem('selectedAIProvider', currentProvider);
+            }
         }
     } catch (error) {
         addMessage('error', 'Failed to load configured providers');

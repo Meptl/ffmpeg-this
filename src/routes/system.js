@@ -42,32 +42,34 @@ function setSessionTrackingFunctions(setInputFile, getSessionId) {
 // Initialize API configurations from environment variables
 let apiConfigs = {
   openai: { 
-    apiKey: process.env.OPENAI_API_KEY || '', 
-    model: process.env.OPENAI_MODEL || 'gpt-4-turbo-preview' 
+    apiKey: process.env.OPENAI_API_KEY || ''
   },
   anthropic: { 
-    apiKey: process.env.ANTHROPIC_API_KEY || '', 
-    model: process.env.ANTHROPIC_MODEL || 'claude-3-opus-20240229' 
+    apiKey: process.env.ANTHROPIC_API_KEY || ''
   },
   gemini: { 
-    apiKey: process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '', 
-    model: process.env.GEMINI_MODEL || 'gemini-pro' 
+    apiKey: process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || ''
   },
   groq: { 
-    apiKey: process.env.GROQ_API_KEY || '', 
-    model: process.env.GROQ_MODEL || 'mixtral-8x7b-32768' 
+    apiKey: process.env.GROQ_API_KEY || ''
   },
   deepseek: { 
-    apiKey: process.env.DEEPSEEK_API_KEY || '', 
-    model: process.env.DEEPSEEK_MODEL || 'deepseek-chat' 
+    apiKey: process.env.DEEPSEEK_API_KEY || ''
   },
   local: { 
     endpoint: process.env.LOCAL_LLM_ENDPOINT || process.env.OLLAMA_API_BASE || '', 
     apiKey: process.env.LOCAL_LLM_API_KEY || '', 
-    headers: {}, 
-    model: process.env.LOCAL_LLM_MODEL || '' 
+    headers: {}
   }
 };
+
+// Add model configurations only if explicitly set via environment variables
+if (process.env.OPENAI_MODEL) apiConfigs.openai.model = process.env.OPENAI_MODEL;
+if (process.env.ANTHROPIC_MODEL) apiConfigs.anthropic.model = process.env.ANTHROPIC_MODEL;
+if (process.env.GEMINI_MODEL) apiConfigs.gemini.model = process.env.GEMINI_MODEL;
+if (process.env.GROQ_MODEL) apiConfigs.groq.model = process.env.GROQ_MODEL;
+if (process.env.DEEPSEEK_MODEL) apiConfigs.deepseek.model = process.env.DEEPSEEK_MODEL;
+if (process.env.LOCAL_LLM_MODEL) apiConfigs.local.model = process.env.LOCAL_LLM_MODEL;
 
 // Check FFmpeg availability
 router.get('/ffmpeg-status', async (req, res) => {
@@ -108,7 +110,18 @@ router.post('/settings', async (req, res) => {
 router.post('/config', (req, res) => {
   const { provider, config } = req.body;
   if (apiConfigs[provider]) {
-    apiConfigs[provider] = { ...apiConfigs[provider], ...config };
+    // Filter out empty strings and null values to preserve defaults
+    const filteredConfig = {};
+    for (const [key, value] of Object.entries(config)) {
+      // Only set the value if it's not empty string, null, or undefined
+      if (value !== '' && value !== null && value !== undefined) {
+        filteredConfig[key] = value;
+      } else if (key === 'model') {
+        // For model specifically, if empty, remove it so defaults can work
+        delete apiConfigs[provider][key];
+      }
+    }
+    apiConfigs[provider] = { ...apiConfigs[provider], ...filteredConfig };
     res.json({ success: true });
   } else {
     res.status(400).json({ error: 'Invalid provider' });

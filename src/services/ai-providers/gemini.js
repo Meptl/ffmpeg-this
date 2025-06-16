@@ -13,7 +13,7 @@ class GeminiProvider extends BaseAIProvider {
     if (this.isConfigured()) {
       this.client = new GoogleGenerativeAI(this.config.apiKey);
       this.model = this.client.getGenerativeModel({ 
-        model: this.config.model || 'gemini-pro' 
+        model: this.config.model || 'gemini-1.5-flash' 
       });
     }
   }

@@ -79,27 +79,37 @@ class AIProviderFactory {
     switch (providerName.toLowerCase()) {
       case 'openai':
         config.apiKey = process.env.OPENAI_API_KEY;
-        config.model = process.env.OPENAI_MODEL || 'gpt-4';
+        if (process.env.OPENAI_MODEL) {
+          config.model = process.env.OPENAI_MODEL;
+        }
         break;
         
       case 'anthropic':
         config.apiKey = process.env.ANTHROPIC_API_KEY;
-        config.model = process.env.ANTHROPIC_MODEL || 'claude-3-opus-20240229';
+        if (process.env.ANTHROPIC_MODEL) {
+          config.model = process.env.ANTHROPIC_MODEL;
+        }
         break;
         
       case 'gemini':
         config.apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-        config.model = process.env.GEMINI_MODEL || 'gemini-pro';
+        if (process.env.GEMINI_MODEL) {
+          config.model = process.env.GEMINI_MODEL;
+        }
         break;
         
       case 'groq':
         config.apiKey = process.env.GROQ_API_KEY;
-        config.model = process.env.GROQ_MODEL || 'mixtral-8x7b-32768';
+        if (process.env.GROQ_MODEL) {
+          config.model = process.env.GROQ_MODEL;
+        }
         break;
         
       case 'deepseek':
         config.apiKey = process.env.DEEPSEEK_API_KEY;
-        config.model = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
+        if (process.env.DEEPSEEK_MODEL) {
+          config.model = process.env.DEEPSEEK_MODEL;
+        }
         break;
         
       case 'local':
