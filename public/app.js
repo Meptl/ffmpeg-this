@@ -3,6 +3,7 @@ import { state, updateState, getState, initializeState } from './js/core/state.j
 import { api } from './js/services/api.js';
 import { initializeSettings, settings } from './js/ui/settings.js';
 import { initializeRegionSelection, clearRegionSelection, toggleRegionSelectMode, regionSelection } from './js/ui/region-selection.js';
+import { initializeHelp } from './js/ui/help.js';
 
 // Global state - using imported state for most values
 let messageManager = null; // Will be initialized after DOM loads
@@ -64,6 +65,9 @@ async function initialize() {
     
     // Initialize region selection
     initializeRegionSelection();
+    
+    // Initialize help modal
+    initializeHelp();
     
     window.onSettingsSaved = async () => {
         // Re-check ffmpeg status and reload providers

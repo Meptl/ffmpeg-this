@@ -19,8 +19,11 @@
             </a>
             <div class="header-controls">
                 <div id="ffmpeg-status" class="ffmpeg-status"></div>
+                <button id="help-btn" class="help-btn">
+                    <img src="assets/circle-help.svg" alt="Help" width="64" height="64">
+                </button>
                 <button id="settings-btn" class="settings-btn">
-                    <img src="assets/settings.svg" alt="Settings" width="20" height="20">
+                    <img src="assets/settings.svg" alt="Settings" width="64" height="64">
                 </button>
             </div>
         </header>
@@ -145,6 +148,39 @@
             </div>
 
             <button id="save-settings" class="save-btn">Save Settings</button>
+        </div>
+    </div>
+
+    <!-- Help Modal -->
+    <div id="help-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>About FFmpeg-this</h2>
+            
+            <div class="help-content">
+                <p><strong>FFmpeg-this</strong> is a chat interface for editting media files using FFmpeg.</p>
+                
+                <h3>How it works:</h3>
+                <ol>
+                    <li>Upload or paste a media file (video, audio, or image)</li>
+                    <li>Describe what you want to do in plain English</li>
+                    <li>Get an AI-generated FFmpeg command specific to your file</li>
+                    <li>Execute the command with one click or copy it for later use</li>
+                </ol>
+
+                <h3>Features:</h3>
+                <ul>
+                    <li>Visual region selection for cropping</li>
+                    <li>Output chaining - your output becomes the next input</li>
+                    <li>Ctrl+C (or Cmd+C) to copy images or video frames</li>
+                </ul>
+            </div>
+            
+            <div class="github-button-container">
+                <a href="https://github.com/remjx/ffmpeg-this" target="_blank" class="github-btn">
+                    <img src="assets/github.svg" alt="GitHub" width="64" height="64">
+                </a>
+            </div>
         </div>
     </div>
 
