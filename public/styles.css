@@ -1,3 +1,11 @@
+/* Font Face */
+@font-face {
+    font-family: 'Ethnocentric';
+    src: url('../assets/Ethnocentric.otf') format('opentype');
+    font-weight: normal;
+    font-style: normal;
+}
+
 /* Global Styles */
 * {
     margin: 0;
@@ -19,28 +27,76 @@ body {
     height: 100vh;
     max-width: 1200px;
     margin: 0 auto;
+    padding-top: 70px;
 }
 
 /* Header */
 header {
-    background-color: #2c3e50;
-    color: white;
-    padding: 1rem 2rem;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    height: 0;
+    position: absolute;
+    top: calc(70px + 1rem);
+    left: 50%;
+    transform: translateX(-50%);
+    width: 100%;
+    max-width: calc(1200px - 2rem);
+    pointer-events: none;
+    z-index: 10;
 }
 
-h1 {
-    font-size: 1.5rem;
-    font-weight: 600;
+header > * {
+    pointer-events: auto;
+}
+
+.logo-link {
+    position: absolute;
+    left: 3px;
+    top: 0;
+    transform: translate(-50%, -50%);
 }
 
 .header-controls {
+    position: absolute;
+    right: -4px;
+    top: 0;
+    transform: translate(50%, -50%);
+
     display: flex;
     align-items: center;
     gap: 1rem;
+}
+
+.header-logo {
+    width: 96px;
+    height: 96px;
+    display: block;
+    cursor: pointer;
+    transition: transform 0.2s ease;
+}
+
+.header-logo:hover {
+    transform: scale(1.1) rotate(4deg);
+}
+
+.header-title-link {
+    position: absolute;
+    left: 66px; /* Position next to logo (96px logo + some spacing) */
+    top: -2px;
+    transform: translateY(-100%);
+    text-decoration: none;
+    pointer-events: auto;
+}
+
+.header-title {
+    font-family: 'Ethnocentric', sans-serif;
+    font-size: 2rem;
+    color: #2c3e50;
+    margin: 0;
+    line-height: 1;
+    transition: opacity 0.2s ease;
+}
+
+.header-title-link:hover .header-title {
+    opacity: 0.8;
 }
 
 /* FFmpeg Status */
@@ -69,25 +125,27 @@ h1 {
 
 /* Settings Button */
 .settings-btn {
-    background-color: #34495e;
-    color: white;
+    background: none;
+    color: #ff9955;
     border: none;
-    padding: calc(0.5rem + 1.5px);
-    border-radius: 4px;
+    padding: 0;
     cursor: pointer;
-    font-size: 1rem;
-    transition: background-color 0.3s;
+    transition: transform 0.2s ease;
     display: flex;
     align-items: center;
     justify-content: center;
+    width: 64px;
+    height: 64px;
 }
 
 .settings-btn:hover {
-    background-color: #2c3e50;
+    transform: scale(1.1) rotate(-4deg);
 }
 
 .settings-btn img {
-    filter: brightness(0) invert(1);
+    filter: brightness(0) saturate(100%) invert(67%) sepia(51%) saturate(1063%) hue-rotate(346deg) brightness(102%) contrast(101%);
+    width: 64px;
+    height: 64px;
 }
 
 /* Chat Container */
