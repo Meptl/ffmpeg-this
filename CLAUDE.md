@@ -4,153 +4,90 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**ffmpeg-this** is a CLI tool that provides an AI-powered chat interface for generating FFmpeg commands. Users upload media files and describe desired operations in natural language to get AI-generated FFmpeg commands specific to their file.
+ffmpeg-this is a Node.js CLI tool that provides an AI-powered chat interface for generating and executing FFmpeg commands. Users describe media operations in plain English, and the tool generates appropriate FFmpeg commands.
 
-## Common Development Commands
+## Key Commands
 
+### Development
 ```bash
-# Development with auto-reload
-npm run dev
-
-# Production start
-npm start
-
 # Install dependencies
 npm install
+
+# Run development server with auto-reload
+npm run dev
+
+# Start production server
+npm start
+
+# Manually start server
+node cli.js
 ```
 
-## Architecture
+### FFmpeg Path Configuration
+The tool requires FFmpeg to be installed. Set custom FFmpeg path via:
+- Environment variable: `FFMPEG_PATH`
+- Or through the settings UI in the web interface
 
-The project uses a client-server architecture:
+## Architecture Overview
 
-### Backend (Node.js/Express)
-- **Entry Point**: `cli.js` - CLI wrapper using Commander.js
-- **Main Server**: Express server with CORS, serves static files from `public/`
-- **API Routes**: `src/routes.js` - All API endpoints including file upload, AI chat, FFmpeg execution
-- **Storage**: `src/storage.js` - Persistent settings management using platform-specific config directories
-- **AI Providers**: `src/services/ai-providers/` - Modular AI provider system with factory pattern
-- **FFmpeg Service**: `src/services/ffmpeg/` - Modular FFmpeg functionality (command execution, metadata extraction, region calculation)
+### Backend Structure
+- **Entry Point**: `cli.js` starts an Express server on port 3232
+- **Routes**: `src/routes.js` handles all API endpoints:
+  - `/api/chat` - AI chat endpoint for FFmpeg command generation
+  - `/api/execute` - FFmpeg command execution with SSE streaming
+  - `/api/upload` - File upload handling
+  - `/api/settings` - Configuration management
 
-### Frontend (Vanilla JS)
-- Single-page application in `public/` directory
-- `public/app.js` handles chat interface, file uploads, and FFmpeg execution
+### AI Provider System
+Located in `src/services/ai-providers/`:
+- **Base Class**: `ai-provider.js` defines the provider interface
+- **Implementations**: `openai.js`, `anthropic.js`, `google.js`, `groq.js`, `deepseek.js`, `local.js`
+- **Factory**: `index.js` handles provider instantiation based on settings
 
-## Key Components
+Each provider requires specific environment variables for API keys:
+- OpenAI: `OPENAI_API_KEY`
+- Anthropic: `ANTHROPIC_API_KEY`
+- Google: `GOOGLE_API_KEY`
+- Groq: `GROQ_API_KEY`
+- DeepSeek: `DEEPSEEK_API_KEY`
 
-### File Management System
-- Uses OS temp directory for uploads and outputs
-- Session-based file tracking (IP + User-Agent)
-- Automatic output chaining (output becomes next input)
-- Supports 500MB file size limit
+### Frontend Architecture
+- **State Management**: `public/js/core/state.js` - Centralized state with observer pattern
+- **API Client**: `public/js/services/api.js` - Handles all backend communication
+- **UI Components**: Modular components in `public/js/ui/`
+- **Main App**: `public/app.js` - Initializes and coordinates components
 
-### AI Provider Service (`src/services/ai-providers/`)
-A modular system for managing different AI providers with a unified interface:
+### Key Features Implementation
 
-#### Components:
-- **Base Provider** (`base-provider.js`): Abstract base class defining the provider interface
-- **Provider Implementations**: Individual provider classes (OpenAI, Anthropic, Gemini, Groq, DeepSeek, Local LLM)
-- **Factory** (`index.js`): AIProviderFactory for creating and managing provider instances
+1. **FFmpeg Command Generation**:
+   - Uses AI to parse natural language requests
+   - Generates commands with placeholders like `{{input}}` and `{{output}}`
+   - Validates and replaces placeholders before execution
 
-#### Key Features:
-- Unified `chat()` interface across all providers
-- Automatic configuration from environment variables
-- Provider validation and health checking
-- Consistent error handling across providers
-- Parameter name normalization (e.g., `maxTokens` → `max_tokens` for OpenAI)
+2. **Real-time Output Streaming**:
+   - Server-Sent Events (SSE) for streaming FFmpeg output
+   - Cancellation support via execution IDs
 
-#### Usage:
-```javascript
-const { AIProviderFactory } = require('./services/ai-providers');
+3. **File Handling**:
+   - Session-based file tracking
+   - Automatic cleanup of uploaded files
+   - Output chaining (previous output becomes next input)
 
-// Get provider with config
-const provider = await AIProviderFactory.getProvider('openai', {
-  apiKey: 'your-key',
-  model: 'gpt-4'
-});
+4. **Settings Storage**:
+   - Cross-platform persistent storage via `src/storage.js`
+   - Stores AI provider selection, API keys, and FFmpeg path
 
-// Use provider
-const response = await provider.chat(messages, {
-  temperature: 0.7,
-  maxTokens: 1000
-});
-```
+## Development Guidelines
 
-### AI Integration (`src/routes.js`)
-- Uses the AI Provider Service for all LLM interactions
-- Structured JSON communication protocol
-- Environment variable configuration with fallback to UI settings
-- System prompt for consistent FFmpeg command generation
+- The project uses vanilla JavaScript (no React/Vue/etc)
+- Express.js for the backend API
+- No build process - all frontend code is served directly
+- File uploads are handled with multer and stored in `uploads/` directory
+- Settings are stored in platform-specific locations (see `src/storage.js`)
 
-### FFmpeg Service (`src/services/ffmpeg/`)
-A modular system for handling all FFmpeg-related operations:
+## Important Notes
 
-#### Components:
-- **Command Executor** (`command-executor.js`): Handles FFmpeg process execution, cancellation, and availability checking
-- **Metadata Extractor** (`metadata-extractor.js`): Extracts video metadata including dimensions, rotation, and full media information
-- **Region Calculator** (`region-calculator.js`): Handles coordinate transformations for crop regions considering video rotation
-- **Main Service** (`index.js`): Unified interface combining all FFmpeg functionality
-
-#### Key Features:
-- Process spawning with real-time output streaming
-- Cancellable executions with configurable timeout (default 60 seconds)
-- Custom FFmpeg path support via persistent settings
-- Placeholder system using `{INPUT_FILE}` and `{OUTPUT_FILE}` for safety
-- Automatic rotation detection and coordinate transformation
-- Support for 90°, -90°, 180° rotations with accurate crop calculations
-
-#### Usage:
-```javascript
-const ffmpegService = require('./services/ffmpeg');
-
-// Execute command
-const result = await ffmpegService.execute({
-  command: 'ffmpeg -i {INPUT_FILE} -c:v libx264 {OUTPUT_FILE}',
-  ffmpegPath: '/usr/local/bin/ffmpeg',
-  inputFile: 'input.mp4',
-  outputFile: 'output.mp4',
-  executionId: 'unique-id'
-});
-
-// Get media dimensions with rotation
-const dimensions = await ffmpegService.getMediaDimensions('video.mp4', 'ffprobe');
-
-// Calculate crop region from UI selection
-const region = await ffmpegService.calculateRegionFromDisplay(
-  displayRegion,
-  'video.mp4',
-  'ffprobe'
-);
-```
-
-### Advanced Video Features
-- Region selection UI for crop operations in `public/app.js`
-- Automatic handling of rotated video metadata
-- Coordinate transformation between display and stored video frames
-
-## Configuration
-
-### Environment Variables
-Configure AI providers via environment variables:
-- `OPENAI_API_KEY`, `OPENAI_MODEL`
-- `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` 
-- `GEMINI_API_KEY`/`GOOGLE_API_KEY`, `GEMINI_MODEL`
-- `GROQ_API_KEY`, `GROQ_MODEL`
-- `DEEPSEEK_API_KEY`, `DEEPSEEK_MODEL`
-- `LOCAL_LLM_ENDPOINT`/`OLLAMA_API_BASE`, `LOCAL_LLM_API_KEY`, `LOCAL_LLM_MODEL`
-
-### Persistent Settings
-Stored in platform-specific directories via `src/storage.js`:
-- **macOS**: `~/Library/Application Support/ffmpeg-this/`
-- **Linux**: `~/.config/ffmpeg-this/`
-- **Windows**: `%APPDATA%/ffmpeg-this/`
-
-## Important Implementation Notes
-
-- The system uses IP + User-Agent for simple session identification
-- Video rotation handling requires complex coordinate transformation in region calculations
-- HTTP range requests are implemented for efficient media streaming
-- The AI communication uses structured JSON format for reliable command generation
-- FFmpeg commands use placeholder replacement for security
-- The FFmpeg service provides a clean separation of concerns for all FFmpeg-related operations
-- All FFmpeg functionality is now centralized in `src/services/ffmpeg/` for better maintainability
-- Please don't use icons/emojis unless asked.
+- No test suite exists - consider manual testing when making changes
+- No linting configuration - follow existing code style
+- The web UI is the primary interface; CLI just starts the server
+- All AI providers implement the same interface for easy swapping
