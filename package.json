@@ -8,7 +8,11 @@
   },
   "scripts": {
     "start": "node cli.js",
-    "dev": "nodemon cli.js --no-open"
+    "dev": "nodemon cli.js --no-open",
+    "build": "npm run build:win && npm run build:mac && npm run build:linux",
+    "build:win": "pkg . --targets node18-win-x64 --output dist/ffmpeg-this-win.exe",
+    "build:mac": "pkg . --targets node18-macos-x64 --output dist/ffmpeg-this-macos",
+    "build:linux": "pkg . --targets node18-linux-x64 --output dist/ffmpeg-this-linux"
   },
   "keywords": [
     "ffmpeg",
@@ -34,6 +38,26 @@
     "openai": "^4.24.1"
   },
   "devDependencies": {
-    "nodemon": "^3.0.2"
+    "nodemon": "^3.0.2",
+    "pkg": "^5.8.1"
+  },
+  "pkg": {
+    "scripts": [
+      "src/**/*.js",
+      "public/**/*.js"
+    ],
+    "assets": [
+      "public/**/*",
+      "assets/**/*",
+      "node_modules/ffmpeg-static/**/*",
+      "node_modules/ffprobe-static/**/*",
+      "node_modules/axios/dist/node/axios.cjs",
+      "node_modules/@anthropic-ai/sdk/_shims/**/*",
+      "node_modules/@google/generative-ai/**/*",
+      "node_modules/groq-sdk/**/*",
+      "node_modules/openai/**/*"
+    ],
+    "outputPath": "dist",
+    "compress": "GZip"
   }
 }
