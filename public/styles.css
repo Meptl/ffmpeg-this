@@ -49,8 +49,8 @@ header > * {
 
 .logo-link {
     position: absolute;
-    left: 3px;
-    top: 0;
+    left: 6px;
+    top: 8px;
     transform: translate(-50%, -50%);
 }
 
@@ -97,7 +97,7 @@ header > * {
 }
 
 .header-title-link:hover {
-    transform: translateY(-100%) scale(1.1) rotate(-4deg);
+    transform: translateY(-100%) scale(1.05) rotate(-4deg);
 }
 
 .header-title-link:hover .header-title {

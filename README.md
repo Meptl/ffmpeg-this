@@ -50,3 +50,6 @@ The app saves certain settings persistently to your config directory:
 - **macOS**: `~/Library/Application Support/ffmpeg-this/`
 - **Linux**: `$XDG_CONFIG_HOME/ffmpeg-this/` or `~/.config/ffmpeg-this/`
 - **Windows**: `%APPDATA%/ffmpeg-this/`
+
+## TODO
+I only tested: openai and anthropic.
