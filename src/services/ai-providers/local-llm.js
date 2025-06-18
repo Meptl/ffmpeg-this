@@ -28,7 +28,7 @@ class LocalLLMProvider extends BaseAIProvider {
       const response = await axios.post(this.config.endpoint, {
         model: options.model || this.config.model || 'default',
         messages: this.formatMessages(messages),
-        temperature: options.temperature ?? 0.7,
+        temperature: options.temperature ?? 0,
         max_tokens: options.maxTokens || 1000,
         ...options
       }, { headers });

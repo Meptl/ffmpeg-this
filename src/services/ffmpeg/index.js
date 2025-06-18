@@ -1,6 +1,7 @@
 const FFmpegCommandExecutor = require('./command-executor');
-const { getAllSettings } = require('../../storage');
 const { spawn } = require('child_process');
+const ffmpegStatic = require('ffmpeg-static');
+const ffprobeStatic = require('ffprobe-static').path;
 
 class FFmpegService {
   constructor() {
@@ -36,11 +37,8 @@ class FFmpegService {
 
 
   async execute(options) {
-    // If no ffmpegPath provided, get it from settings
-    if (!options.ffmpegPath) {
-      const settings = await getAllSettings();
-      options = { ...options, ffmpegPath: settings.ffmpegPath || 'ffmpeg' };
-    }
+    // Always use ffmpeg-static
+    options = { ...options, ffmpegPath: ffmpegStatic };
     return this.commandExecutor.execute(options);
   }
 
@@ -48,26 +46,21 @@ class FFmpegService {
     return this.commandExecutor.cancel(executionId);
   }
 
-  async checkAvailability(ffmpegPath = null) {
-    if (!ffmpegPath) {
-      const settings = await getAllSettings();
-      ffmpegPath = settings.ffmpegPath || 'ffmpeg';
-    }
-    return this.commandExecutor.checkAvailability(ffmpegPath);
+  async checkAvailability() {
+    // Always check ffmpeg-static availability
+    return this.commandExecutor.checkAvailability(ffmpegStatic);
   }
 
-  async transformRegion(displayRegion, filePath, ffprobePath = null) {
-    if (!ffprobePath) {
-      const settings = await getAllSettings();
-      const ffmpegPath = settings.ffmpegPath || 'ffmpeg';
-      ffprobePath = ffmpegPath.replace(/ffmpeg([^\/\\]*)$/, 'ffprobe$1');
-    }
+  async transformRegion(displayRegion, filePath) {
+    // Always use ffprobe-static
+    const ffprobePath = ffprobeStatic;
 
     return new Promise((resolve, reject) => {
       const ffprobeProcess = spawn(ffprobePath, [
         '-v', 'error',
         '-select_streams', 'v:0',
-        '-show_entries', 'stream=width,height:stream_side_data=displaymatrix',
+        '-show_format',
+        '-show_streams',
         '-of', 'json',
         filePath
       ]);

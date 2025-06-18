@@ -23,7 +23,7 @@ class DeepSeekProvider extends BaseAIProvider {
       const response = await axios.post(this.endpoint, {
         model: model || this.config.model || 'deepseek-chat',
         messages: this.formatMessages(messages),
-        temperature: temperature ?? 0.7,
+        temperature: temperature ?? 0,
         max_tokens: maxTokens || 1000
       }, {
         headers: {
@@ -77,8 +77,6 @@ class DeepSeekProvider extends BaseAIProvider {
       if (status === 401) {
         throw new Error('Invalid DeepSeek API key');
       } else if (status === 422) {
-        // Log the full error details for 422 errors
-        console.error('DeepSeek 422 error details:', errorData);
         throw new Error(`DeepSeek validation error: ${message}`);
       } else if (status === 429) {
         throw new Error('DeepSeek rate limit exceeded. Please try again later.');

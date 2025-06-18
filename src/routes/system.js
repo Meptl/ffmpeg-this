@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const ffmpegService = require('../services/ffmpeg');
-const { getAllSettings, setAllSettings } = require('../storage');
 const { AIProviderFactory } = require('../services/ai-providers');
 const fs = require('fs');
 const path = require('path');
@@ -22,9 +21,6 @@ function setPreConfiguredFile(filePath) {
       size: stats.size,
       mimetype: 'application/octet-stream'
     };
-    console.log(`✓ Pre-configured file: ${preConfiguredFile.originalName}`);
-  } else {
-    console.error(`✗ Pre-configured file not found: ${filePath}`);
   }
 }
 
@@ -82,29 +78,7 @@ router.get('/ffmpeg-status', async (req, res) => {
   }
 });
 
-// Get persistent settings
-router.get('/settings', async (req, res) => {
-  try {
-    const settings = await getAllSettings();
-    res.json(settings);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Update persistent settings
-router.post('/settings', async (req, res) => {
-  try {
-    const success = await setAllSettings(req.body);
-    if (success) {
-      res.json({ success: true });
-    } else {
-      res.status(500).json({ error: 'Failed to save settings' });
-    }
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+// Settings endpoints removed - now using localStorage
 
 // Update API configuration
 router.post('/config', (req, res) => {

@@ -75,16 +75,10 @@ function getState() {
 // Initialize state from persistent storage
 async function initializeState() {
     try {
-        // Load settings from API
-        const response = await fetch('/api/settings');
-        if (response.ok) {
-            const settings = await response.json();
-            
-            // Update state with loaded settings
-            if (settings.autoExecuteCommands !== undefined) {
-                state.autoExecuteCommands = settings.autoExecuteCommands;
-            }
-            
+        // Load autoExecuteCommands from localStorage
+        const savedAutoExecute = localStorage.getItem('autoExecuteCommands');
+        if (savedAutoExecute !== null) {
+            state.autoExecuteCommands = savedAutoExecute === 'true';
         }
     } catch (error) {
         console.error('Error initializing state:', error);

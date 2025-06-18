@@ -23,10 +23,8 @@ npm start
 node cli.js
 ```
 
-### FFmpeg Path Configuration
-The tool requires FFmpeg to be installed. Set custom FFmpeg path via:
-- Environment variable: `FFMPEG_PATH`
-- Or through the settings UI in the web interface
+### FFmpeg Configuration
+FFmpeg is bundled with the application via ffmpeg-static, so no installation is required.
 
 ## Architecture Overview
 
@@ -74,8 +72,8 @@ Each provider requires specific environment variables for API keys:
    - Output chaining (previous output becomes next input)
 
 4. **Settings Storage**:
-   - Cross-platform persistent storage via `src/storage.js`
-   - Stores AI provider selection, API keys, and FFmpeg path
+   - Settings are stored in browser localStorage
+   - Stores AI provider selection, API keys, and UI preferences
 
 ## Development Guidelines
 

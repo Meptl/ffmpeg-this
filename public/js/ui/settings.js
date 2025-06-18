@@ -46,7 +46,6 @@ function initializeElements() {
         },
         
         // System settings
-        ffmpegPath: document.getElementById('ffmpeg-path'),
         autoExecuteCommands: document.getElementById('auto-execute-commands')
     };
 }
@@ -116,14 +115,16 @@ async function loadCurrentSettings() {
         // Load persistent settings
         const persistentSettings = await api.getSettings();
         
-        if (elements.ffmpegPath) {
-            elements.ffmpegPath.value = persistentSettings.ffmpegPath || '';
-        }
         
         // Update system settings checkboxes
-        
         if (elements.autoExecuteCommands) {
-            elements.autoExecuteCommands.checked = state.autoExecuteCommands;
+            // Load from localStorage
+            const savedAutoExecute = localStorage.getItem('autoExecuteCommands');
+            if (savedAutoExecute !== null) {
+                elements.autoExecuteCommands.checked = savedAutoExecute === 'true';
+            } else {
+                elements.autoExecuteCommands.checked = state.autoExecuteCommands;
+            }
         }
         
     } catch (error) {
@@ -168,17 +169,13 @@ async function saveSettings(suppressAlert = false) {
             }
         }
         
-        // Save persistent settings
-        const persistentData = {
-            ffmpegPath: elements.ffmpegPath?.value || '',
-            autoExecuteCommands: elements.autoExecuteCommands?.checked || false,
-        };
-        
-        await api.saveSettings(persistentData);
+        // Save autoExecuteCommands to localStorage
+        const autoExecuteValue = elements.autoExecuteCommands?.checked || false;
+        localStorage.setItem('autoExecuteCommands', autoExecuteValue.toString());
         
         // Update state
         updateState({
-            autoExecuteCommands: persistentData.autoExecuteCommands
+            autoExecuteCommands: autoExecuteValue
         });
         
         settingsChanged = false;
@@ -202,9 +199,8 @@ async function saveSettings(suppressAlert = false) {
 // Save only auto-execute setting
 async function saveAutoExecuteSetting() {
     try {
-        await api.saveSettings({ 
-            autoExecuteCommands: state.autoExecuteCommands 
-        });
+        // Save to localStorage instead
+        localStorage.setItem('autoExecuteCommands', state.autoExecuteCommands.toString());
     } catch (error) {
         console.error('Error saving auto-execute setting:', error);
     }
@@ -239,7 +235,10 @@ function setupEventListeners() {
     // Auto execute toggle
     if (elements.autoExecuteCommands) {
         elements.autoExecuteCommands.addEventListener('change', (e) => {
-            updateState({ autoExecuteCommands: e.target.checked });
+            const checked = e.target.checked;
+            updateState({ autoExecuteCommands: checked });
+            // Save to localStorage immediately
+            localStorage.setItem('autoExecuteCommands', checked.toString());
         });
     }
 }

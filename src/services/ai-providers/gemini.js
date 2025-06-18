@@ -27,7 +27,12 @@ class GeminiProvider extends BaseAIProvider {
       // Gemini expects a single string prompt, so we need to format messages
       const prompt = this.formatMessagesAsPrompt(messages);
       
-      const response = await this.model.generateContent(prompt);
+      const generationConfig = {
+        temperature: options.temperature ?? 0,
+        maxOutputTokens: options.maxTokens || 1000,
+      };
+      
+      const response = await this.model.generateContent(prompt, { generationConfig });
       const result = response.response;
 
       return {

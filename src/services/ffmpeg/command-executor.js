@@ -40,11 +40,11 @@ class FFmpegCommandExecutor {
     return args;
   }
 
-  async execute({ command, ffmpegPath = 'ffmpeg', inputFile, outputFile, executionId, onOutput }) {
+  async execute({ command, ffmpegPath, inputFile, outputFile, executionId, onOutput }) {
     return new Promise((resolve, reject) => {
       const args = this.parseCommand(command);
       
-      console.log('FFmpeg Command:', command);
+      console.log(command);
       
       const ffmpegProcess = spawn(ffmpegPath, args, {
         stdio: ['pipe', 'pipe', 'pipe']
@@ -140,7 +140,7 @@ class FFmpegCommandExecutor {
     return { success: true, message: 'FFmpeg execution cancelled' };
   }
 
-  async checkAvailability(ffmpegPath = 'ffmpeg') {
+  async checkAvailability(ffmpegPath) {
     return new Promise((resolve) => {
       const testProcess = spawn(ffmpegPath, ['-version'], {
         stdio: ['pipe', 'pipe', 'pipe']

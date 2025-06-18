@@ -5,14 +5,10 @@ const express = require('express');
 const cors = require('cors');
 const open = require('open');
 const path = require('path');
-const { exec } = require('child_process');
-const { promisify } = require('util');
-const execAsync = promisify(exec);
 
-// Import routes and storage
+// Import routes
 const apiRoutes = require('./src/routes');
 const { setPreConfiguredFile } = require('./src/routes/system');
-const { initStorage, get } = require('./src/storage');
 
 // Parse command line arguments
 program
@@ -41,38 +37,20 @@ app.use('/assets', express.static(path.join(__dirname, 'assets')));
 // API Routes
 app.use('/api', apiRoutes);
 
-// Check ffmpeg availability
-app.get('/api/ffmpeg-status', async (req, res) => {
-  try {
-    // Check custom ffmpeg path first
-    const customPath = await get('ffmpegPath', '');
-    const ffmpegCommand = customPath || 'ffmpeg';
-    
-    await execAsync(`"${ffmpegCommand}" -version`);
-    res.json({ available: true, path: ffmpegCommand });
-  } catch (error) {
-    res.json({ available: false, error: error.message });
-  }
-});
+// Start server
+// Handle pre-configured file if provided (either as positional arg or --file option)
+const fileToPreConfigure = args[0] || options.file;
+if (fileToPreConfigure) {
+  setPreConfiguredFile(fileToPreConfigure);
+}
 
-// Initialize storage and start server
-(async () => {
-  await initStorage();
-  
-  // Handle pre-configured file if provided (either as positional arg or --file option)
-  const fileToPreConfigure = args[0] || options.file;
-  if (fileToPreConfigure) {
-    setPreConfiguredFile(fileToPreConfigure);
-  }
-  
-  app.listen(PORT, () => {
+app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);
   
-    if (options.open) {
-      open(`http://localhost:${PORT}`);
-    }
-  });
-})();
+  if (options.open) {
+    open(`http://localhost:${PORT}`);
+  }
+});
 
 // Handle graceful shutdown
 process.on('SIGINT', () => {

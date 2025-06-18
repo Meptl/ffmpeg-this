@@ -71,7 +71,6 @@
             <!-- Tab Navigation -->
             <div class="tab-navigation">
                 <button class="tab-button active" data-tab="backend">Backend</button>
-                <button class="tab-button" data-tab="ffmpeg">FFmpeg</button>
                 <button class="tab-button" data-tab="system">System</button>
             </div>
             
@@ -124,14 +123,6 @@
                     <input type="text" id="local-model" placeholder="Model name (optional)" class="api-input">
                     <textarea id="local-headers" placeholder='Custom HTTP Headers, e.g. {"Authorization": "Bearer token"}' class="api-input headers-input">{}</textarea>
                     <div class="env-hint">LOCAL_LLM_ENDPOINT or OLLAMA_API_BASE, LOCAL_LLM_API_KEY, LOCAL_LLM_MODEL</div>
-                </div>
-            </div>
-
-            <!-- FFmpeg Tab -->
-            <div id="ffmpeg-tab" class="tab-content">
-                <div class="settings-section">
-                    <h3>FFmpeg Configuration</h3>
-                    <input type="text" id="ffmpeg-path" placeholder="FFmpeg path (optional, leave empty for system PATH)" class="api-input">
                 </div>
             </div>
 

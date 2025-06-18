@@ -7,7 +7,6 @@ const fs = require('fs');
 const os = require('os');
 const { spawn } = require('child_process');
 const ffmpegService = require('./services/ffmpeg');
-const { getAllSettings, setAllSettings } = require('./storage');
 const { AIProviderFactory } = require('./services/ai-providers');
 const systemRoutes = require('./routes/system');
 
@@ -71,7 +70,6 @@ router.post('/chat', async (req, res) => {
   }
   
   const config = apiConfigs[provider];
-  console.log(`Config for provider ${provider}:`, config);
   
   // Validate provider configuration using factory
   try {
@@ -87,7 +85,6 @@ router.post('/chat', async (req, res) => {
   
   try {
     // Always use structured mode
-    const settings = await getAllSettings();
     const currentInputFile = getCurrentInputFile(sessionId);
     
     if (!currentInputFile) {
@@ -114,7 +111,6 @@ router.post('/chat', async (req, res) => {
     const formattedJsonMessage = JSON.stringify(jsonMessage, null, 2);
 
     console.log('Sending JSON message to AI:', formattedJsonMessage);
-    
     // Hardcoded system prompt
     const systemPrompt = `You are an FFmpeg command generator.
 The user will ask you a series of operations to perform.
@@ -170,7 +166,7 @@ Operations Reference:
     const messages = [...conversationHistory, { role: 'user', content: finalMessage }];
     const chatResponse = await aiProvider.chat(messages, {
       model: config.model,
-      temperature: 0.7,
+      temperature: 0,
       maxTokens: 1000
     });
     
@@ -462,7 +458,6 @@ router.post('/execute-ffmpeg', async (req, res) => {
     // Check if execution was already cancelled before starting
     const execIdStr = String(executionId);
     if (cancelledExecutions.has(execIdStr)) {
-      console.log(`Execution ${execIdStr} was cancelled before starting`);
       cancelledExecutions.delete(execIdStr);
       
       const sseConnection = sseConnections.get(executionId);
@@ -497,7 +492,6 @@ router.post('/execute-ffmpeg', async (req, res) => {
     if (result.success) {
       // Check if execution was cancelled
       const wasCancelled = cancelledExecutions.has(execIdStr);
-      console.log(`Execution ${execIdStr} completed. Was cancelled: ${wasCancelled}`);
       
       // Only send completion message and update input file if not cancelled
       if (!wasCancelled) {
@@ -572,7 +566,6 @@ router.post('/execute-ffmpeg', async (req, res) => {
     const wasCancelled = cancelledExecutions.has(execIdStr);
     
     if (wasCancelled) {
-      console.log(`Execution ${execIdStr} was cancelled - not updating input file`);
     }
     
     // Send appropriate message via SSE based on whether it was cancelled
@@ -635,7 +628,6 @@ router.post('/cancel-ffmpeg', async (req, res) => {
     // Mark execution as cancelled
     const execIdStr = String(executionId);
     cancelledExecutions.add(execIdStr);
-    console.log(`Marked execution ${execIdStr} as cancelled`);
     
     const result = ffmpegService.cancel(executionId);
     

@@ -1009,15 +1009,16 @@ async function copyToClipboard(command, buttonElement) {
 async function executeAndToggleAuto(command, outputFile, messageId) {
     // Toggle the auto-execute setting
     autoExecuteCommands = true;
+    updateState({ autoExecuteCommands: true });
+    
+    // Save to localStorage
+    localStorage.setItem('autoExecuteCommands', 'true');
     
     // Update the checkbox in settings
     const autoExecuteCheckbox = document.getElementById('auto-execute-commands');
     if (autoExecuteCheckbox) {
         autoExecuteCheckbox.checked = true;
     }
-    
-    // Save the setting
-    await saveAutoExecuteSetting();
     
     // Execute the command
     await executeFFmpegCommand(command, outputFile, messageId);
@@ -1030,7 +1031,8 @@ async function executeAndToggleAuto(command, outputFile, messageId) {
 
 // Save only the auto-execute setting
 async function saveAutoExecuteSetting() {
-    await settings.saveAutoExecute();
+    // Now handled directly in executeAndToggleAuto
+    localStorage.setItem('autoExecuteCommands', autoExecuteCommands.toString());
 }
 
 // Execute FFmpeg command

@@ -14,29 +14,6 @@ class AnthropicProvider extends BaseAIProvider {
     }
   }
 
-  async chat(messages, options = {}) {
-    if (!this.client) {
-      throw new Error('Anthropic client not initialized. Please provide an API key.');
-    }
-
-    try {
-      const response = await this.client.messages.create({
-        model: options.model || this.config.model || 'claude-3-opus-20240229',
-        messages: this.formatMessages(messages),
-        max_tokens: options.maxTokens || 1000,
-        temperature: options.temperature ?? 0.7,
-        ...options
-      });
-
-      return {
-        content: this.extractContent(response),
-        usage: this.extractUsage(response),
-        raw: response
-      };
-    } catch (error) {
-      this.handleError(error);
-    }
-  }
 
   isConfigured() {
     return !!this.config.apiKey;
@@ -74,7 +51,7 @@ class AnthropicProvider extends BaseAIProvider {
         model: options.model || this.config.model || 'claude-3-opus-20240229',
         messages: formattedMessages,
         max_tokens: options.maxTokens || 1000,
-        temperature: options.temperature ?? 0.7,
+        temperature: options.temperature ?? 0,
         ...options
       };
 

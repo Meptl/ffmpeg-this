@@ -121,7 +121,7 @@ class AIProviderFactory {
           try {
             config.headers = JSON.parse(process.env.LOCAL_LLM_HEADERS);
           } catch (e) {
-            console.warn('Failed to parse LOCAL_LLM_HEADERS:', e.message);
+            // Silently ignore parse errors
           }
         }
         break;

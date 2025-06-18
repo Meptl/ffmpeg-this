@@ -36,21 +36,7 @@ class APIService {
         return response.json();
     }
     
-    // Get persistent settings
-    async getSettings() {
-        const response = await this.fetch('/api/settings');
-        return response.json();
-    }
-    
-    // Save persistent settings
-    async saveSettings(settings) {
-        const response = await this.fetch('/api/settings', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(settings)
-        });
-        return response.json();
-    }
+    // Settings methods removed - now using localStorage
     
     // Check FFmpeg status
     async checkFFmpegStatus() {

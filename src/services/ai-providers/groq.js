@@ -26,7 +26,7 @@ class GroqProvider extends BaseAIProvider {
       const response = await this.client.chat.completions.create({
         model: options.model || this.config.model || 'mixtral-8x7b-32768',
         messages: this.formatMessages(messages),
-        temperature: options.temperature ?? 0.7,
+        temperature: options.temperature ?? 0,
         max_tokens: maxTokens || 1000,
         ...otherOptions
       });

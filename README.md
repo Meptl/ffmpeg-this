@@ -42,9 +42,7 @@ Only providers with configured API keys will appear in the chat dropdown.
 
 ## FFmpeg Integration
 
-The app requires FFmpeg to function and will block usage if FFmpeg is not found. You can:
-- Install FFmpeg system-wide and ensure it's in your PATH
-- Configure a custom FFmpeg path in the Settings (persistently saved)
+FFmpeg is bundled with the application via ffmpeg-static, so no installation is required.
 
 ## Persistent Settings
 
