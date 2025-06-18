@@ -236,6 +236,14 @@ header > * {
     text-align: center;
 }
 
+.message.warning {
+    background-color: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffeaa7;
+    align-self: center;
+    text-align: left;
+    max-width: 90%;
+}
 
 .message.loading {
     animation: pulse 1.5s infinite;

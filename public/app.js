@@ -150,6 +150,13 @@ async function initialize() {
     // Sync API keys from localStorage to server
     await syncLocalStorageToServer();
     
+    // Load configured providers immediately after sync
+    try {
+        await loadConfiguredProviders();
+    } catch (error) {
+        console.error('Error loading providers:', error);
+    }
+    
     window.onSettingsSaved = async () => {
         // Re-check ffmpeg status and reload providers
         const ffmpegOk = await checkFFmpegStatus();
@@ -220,7 +227,10 @@ const dropZone = document.getElementById('drop-zone');
 dropZone.addEventListener('dragover', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    dropZone.classList.add('drag-over');
+    // Only show drag-over if providers are configured
+    if (configuredProviders && configuredProviders.length > 0) {
+        dropZone.classList.add('drag-over');
+    }
 });
 
 dropZone.addEventListener('dragleave', (e) => {
@@ -233,6 +243,13 @@ dropZone.addEventListener('drop', (e) => {
     e.preventDefault();
     e.stopPropagation();
     dropZone.classList.remove('drag-over');
+    
+    // Check if any providers are configured
+    if (!configuredProviders || configuredProviders.length === 0) {
+        fileStatus.textContent = 'Please configure an API provider in Settings first';
+        fileStatus.className = 'file-status error';
+        return;
+    }
     
     const files = e.dataTransfer.files;
     if (files.length > 0) {
@@ -307,6 +324,16 @@ document.addEventListener('paste', async (e) => {
 
 // Process clipboard blob
 function processClipboardBlob(blob) {
+    // Check if any providers are configured
+    if (!configuredProviders || configuredProviders.length === 0) {
+        fileStatus.textContent = 'Please configure an API provider in Settings first';
+        fileStatus.className = 'file-status error';
+        // Restore label
+        const fileLabel = document.querySelector('.file-label');
+        fileLabel.textContent = 'Select, drag or paste a file here';
+        fileLabel.classList.remove('uploading');
+        return;
+    }
     // Add timestamp to filename to ensure uniqueness
     const timestamp = Date.now();
     const extension = blob.type.split('/')[1] || 'png';
@@ -332,30 +359,96 @@ function processClipboardBlob(blob) {
     }, 300);
 }
 
+// Get providers from localStorage to add to the list
+function getLocalStorageProviders() {
+    const localProviders = [];
+    const providers = [
+        { id: 'openai', name: 'OpenAI' },
+        { id: 'anthropic', name: 'Anthropic (Claude)' },
+        { id: 'gemini', name: 'Google Gemini' },
+        { id: 'groq', name: 'Groq' },
+        { id: 'deepseek', name: 'DeepSeek' }
+    ];
+    
+    for (const provider of providers) {
+        if (localStorage.getItem(`${provider.id}_apiKey`)) {
+            localProviders.push(provider);
+        }
+    }
+    
+    // Check local LLM
+    if (localStorage.getItem('local_endpoint')) {
+        localProviders.push({ id: 'local', name: 'Local LLM' });
+    }
+    
+    return localProviders;
+}
+
 // Load configured providers
 async function loadConfiguredProviders() {
     try {
         const data = await api.getConfiguredProviders();
-        configuredProviders = data.providers;
+        let availableProviders = data.providers;
+        
+        // If no server providers, check localStorage
+        if (availableProviders.length === 0) {
+            availableProviders = getLocalStorageProviders();
+        }
+        
+        configuredProviders = availableProviders;
         updateState({ configuredProviders });
         
         // Clear existing options
         providerSelect.innerHTML = '';
         
         if (configuredProviders.length === 0) {
-            // No providers configured
+            // No providers configured anywhere
             providerSelect.innerHTML = '<option value="">No providers configured</option>';
             providerSelect.disabled = true;
             messageInput.disabled = true;
             sendBtn.disabled = true;
             
-            // Show welcome message
-            addMessage('info', 'Welcome! Please click the Settings button to configure an API key for this session.');
+            // Disable file upload
+            fileInput.disabled = true;
+            const fileLabel = document.querySelector('.file-label');
+            if (fileLabel) {
+                fileLabel.style.opacity = '0.5';
+                fileLabel.style.cursor = 'not-allowed';
+                fileLabel.textContent = 'Configure an API provider first';
+            }
+            
+            // Show warning message
+            const warningId = 'no-providers-warning';
+            if (!document.getElementById(warningId)) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message warning';
+                messageDiv.id = warningId;
+                messageDiv.innerHTML = `
+                    <div class="message-header">Warning</div>
+                    <div class="message-content">No AI providers configured. Please click the Settings button to configure an API key.</div>
+                `;
+                messagesDiv.appendChild(messageDiv);
+            }
         } else {
-            // Add configured providers to dropdown
+            // Remove warning message if it exists
+            const warningMsg = document.getElementById('no-providers-warning');
+            if (warningMsg) {
+                warningMsg.remove();
+            }
+            
+            // Enable file upload
+            fileInput.disabled = false;
+            const fileLabel = document.querySelector('.file-label');
+            if (fileLabel) {
+                fileLabel.style.opacity = '1';
+                fileLabel.style.cursor = 'pointer';
+                fileLabel.textContent = 'Select, drag or paste a file here';
+            }
+            
+            // Add providers to dropdown
             providerSelect.disabled = false;
             messageInput.disabled = false;
-            sendBtn.disabled = !messageInput.value.trim(); // Check if input has text
+            sendBtn.disabled = !messageInput.value.trim();
             
             // Get saved provider from localStorage
             const savedProvider = localStorage.getItem('selectedAIProvider');
@@ -500,6 +593,15 @@ async function checkFFmpegStatus() {
 async function handleFileUpload() {
     const file = fileInput.files[0];
     if (!file) return;
+    
+    // Check if any providers are configured
+    if (!configuredProviders || configuredProviders.length === 0) {
+        fileStatus.textContent = 'Please configure an API provider in Settings first';
+        fileStatus.className = 'file-status error';
+        // Clear the file input
+        fileInput.value = '';
+        return;
+    }
     
     // Show loading spinner if not already showing
     const fileLabel = document.querySelector('.file-label');

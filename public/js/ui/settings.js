@@ -4,6 +4,21 @@
 import { state, updateState } from '../core/state.js';
 import { api } from '../services/api.js';
 
+// Check if any providers are configured in localStorage
+function hasLocalStorageProviders() {
+    const providers = ['openai', 'anthropic', 'gemini', 'groq', 'deepseek'];
+    for (const provider of providers) {
+        if (localStorage.getItem(`${provider}_apiKey`)) {
+            return true;
+        }
+    }
+    // Check local LLM
+    if (localStorage.getItem('local_endpoint')) {
+        return true;
+    }
+    return false;
+}
+
 // DOM elements cache
 let elements = null;
 
@@ -106,7 +121,13 @@ async function loadCurrentSettings() {
                 elements.providers.local.key.value = localStorage.getItem('local_apiKey') || '';
                 elements.providers.local.model.value = localStorage.getItem('local_model') || settings.model || '';
                 const savedHeaders = localStorage.getItem('local_headers');
-                elements.providers.local.headers.value = savedHeaders || JSON.stringify(settings.headers || {}, null, 2);
+                if (savedHeaders && savedHeaders !== '{}') {
+                    elements.providers.local.headers.value = savedHeaders;
+                } else if (settings.headers && Object.keys(settings.headers).length > 0) {
+                    elements.providers.local.headers.value = JSON.stringify(settings.headers, null, 2);
+                } else {
+                    elements.providers.local.headers.value = ''; // Show placeholder
+                }
             } else if (elements.providers[provider]) {
                 const providerElements = elements.providers[provider];
                 // Load API key from localStorage
@@ -194,10 +215,13 @@ async function saveSettings() {
             const model = localElements.model.value;
             let headers = {};
             
-            try {
-                headers = JSON.parse(localElements.headers.value);
-            } catch (e) {
-                console.error('Invalid JSON in headers field');
+            // Only parse if there's actual content
+            if (localElements.headers.value.trim()) {
+                try {
+                    headers = JSON.parse(localElements.headers.value);
+                } catch (e) {
+                    console.error('Invalid JSON in headers field');
+                }
             }
             
             // Save to localStorage
@@ -216,7 +240,12 @@ async function saveSettings() {
             } else {
                 localStorage.removeItem('local_model');
             }
-            localStorage.setItem('local_headers', localElements.headers.value);
+            // Only save headers if not empty
+            if (localElements.headers.value.trim() && localElements.headers.value.trim() !== '{}') {
+                localStorage.setItem('local_headers', localElements.headers.value);
+            } else {
+                localStorage.removeItem('local_headers');
+            }
             
             // Always save to server for current session (including empty values to trigger reset)
             const localConfig = {};
@@ -245,9 +274,21 @@ async function saveSettings() {
         settingsChanged = false;
         elements.modal.style.display = 'none';
         
+        // Immediately check if we now have providers and remove warning
+        const hasProviders = hasLocalStorageProviders();
+        if (hasProviders) {
+            const warningMsg = document.getElementById('no-providers-warning');
+            if (warningMsg) {
+                warningMsg.remove();
+            }
+        }
+        
         // Trigger callbacks for settings that changed
         if (window.onSettingsSaved) {
-            window.onSettingsSaved();
+            // Small delay to ensure server has processed the config
+            setTimeout(() => {
+                window.onSettingsSaved();
+            }, 100);
         }
         
     } catch (error) {
