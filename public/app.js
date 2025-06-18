@@ -48,6 +48,34 @@ function getProviderDisplayName(provider) {
 // Initialize on load
 initialize();
 
+// Global scroll handler for chat messages
+function handleGlobalScroll(event) {
+    // Check if any modal is active
+    const modals = document.querySelectorAll('.modal');
+    const isModalActive = Array.from(modals).some(modal => 
+        modal.style.display === 'block' || modal.classList.contains('active')
+    );
+    
+    // If a modal is active, don't intercept scroll
+    if (isModalActive) {
+        return;
+    }
+    
+    // Get the messages container
+    const messagesDiv = document.getElementById('messages');
+    if (!messagesDiv) return;
+    
+    // Prevent default scroll behavior
+    event.preventDefault();
+    
+    // Apply scroll to messages container
+    const scrollAmount = event.deltaY;
+    messagesDiv.scrollTop += scrollAmount;
+}
+
+// Add wheel event listener to capture scroll anywhere on page
+document.addEventListener('wheel', handleGlobalScroll, { passive: false });
+
 async function initialize() {
     // Initialize state from persistent storage
     await initializeState();
