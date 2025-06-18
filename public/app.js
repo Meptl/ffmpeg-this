@@ -24,7 +24,6 @@ const messagesDiv = document.getElementById('messages');
 const messageInput = document.getElementById('message-input');
 const sendBtn = document.getElementById('send-btn');
 const providerSelect = document.getElementById('provider-select');
-const ffmpegStatus = document.getElementById('ffmpeg-status');
 
 // File upload elements
 const fileInput = document.getElementById('file-input');
@@ -562,29 +561,27 @@ async function checkFFmpegStatus() {
         updateState({ ffmpegAvailable });
         
         if (!data.available) {
-            // Only show status when ffmpeg is NOT available
-            ffmpegStatus.innerHTML = '⚠️ FFmpeg not found';
-            ffmpegStatus.className = 'ffmpeg-status unavailable';
-            ffmpegStatus.style.display = 'block';
-            
             // Disable chat interface
             providerSelect.disabled = true;
             messageInput.disabled = true;
             sendBtn.disabled = true;
             
             // Show error message
-            addMessage('error', 'FFmpeg is required but not found. Please install FFmpeg or configure the path in Settings.');
+            addMessage('error', 'FFmpeg not found.');
             
             return false;
         } else {
-            // Hide status when ffmpeg IS available
-            ffmpegStatus.style.display = 'none';
             return true;
         }
     } catch (error) {
-        ffmpegStatus.innerHTML = '❌ Error checking FFmpeg';
-        ffmpegStatus.className = 'ffmpeg-status error';
-        ffmpegStatus.style.display = 'block';
+        // Show error message
+        const errorMsg = document.createElement('div');
+        errorMsg.className = 'message error';
+        errorMsg.innerHTML = `
+            <div class="message-header">System</div>
+            <div class="message-content">Error checking FFmpeg: ${error.message}</div>
+        `;
+        messagesDiv.appendChild(errorMsg);
         return false;
     }
 }
