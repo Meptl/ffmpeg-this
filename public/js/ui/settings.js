@@ -85,7 +85,7 @@ function closeModal() {
     if (settingsChanged) {
         const shouldSave = confirm('You have unsaved changes. Would you like to save them before closing?');
         if (shouldSave) {
-            saveSettings(true);
+            saveSettings();
             return;
         }
     }
@@ -101,14 +101,24 @@ async function loadCurrentSettings() {
         // Populate provider fields
         for (const [provider, settings] of Object.entries(config)) {
             if (provider === 'local' && elements.providers.local) {
-                elements.providers.local.endpoint.value = settings.endpoint || '';
-                elements.providers.local.key.value = '';
-                elements.providers.local.model.value = settings.model || '';
-                elements.providers.local.headers.value = JSON.stringify(settings.headers || {}, null, 2);
+                // Load from localStorage first, fallback to server config
+                elements.providers.local.endpoint.value = localStorage.getItem('local_endpoint') || settings.endpoint || '';
+                elements.providers.local.key.value = localStorage.getItem('local_apiKey') || '';
+                elements.providers.local.model.value = localStorage.getItem('local_model') || settings.model || '';
+                const savedHeaders = localStorage.getItem('local_headers');
+                elements.providers.local.headers.value = savedHeaders || JSON.stringify(settings.headers || {}, null, 2);
             } else if (elements.providers[provider]) {
                 const providerElements = elements.providers[provider];
-                if (providerElements.key) providerElements.key.value = '';
-                if (providerElements.model) providerElements.model.value = settings.model || '';
+                // Load API key from localStorage
+                if (providerElements.key) {
+                    const savedKey = localStorage.getItem(`${provider}_apiKey`);
+                    providerElements.key.value = savedKey || '';
+                }
+                // Load model from localStorage, fallback to server config
+                if (providerElements.model) {
+                    const savedModel = localStorage.getItem(`${provider}_model`);
+                    providerElements.model.value = savedModel || settings.model || '';
+                }
             }
         }
         
@@ -133,7 +143,7 @@ async function loadCurrentSettings() {
 }
 
 // Save all settings
-async function saveSettings(suppressAlert = false) {
+async function saveSettings() {
     const providers = ['openai', 'anthropic', 'gemini', 'groq', 'deepseek'];
     
     try {
@@ -145,8 +155,34 @@ async function saveSettings(suppressAlert = false) {
             const apiKey = providerElements.key?.value;
             const model = providerElements.model?.value;
             
-            if (apiKey) {
-                await api.saveConfig(provider, { apiKey, model });
+            // Save to localStorage
+            if (apiKey !== undefined) {
+                if (apiKey) {
+                    localStorage.setItem(`${provider}_apiKey`, apiKey);
+                } else {
+                    localStorage.removeItem(`${provider}_apiKey`);
+                }
+            }
+            if (model !== undefined) {
+                if (model) {
+                    localStorage.setItem(`${provider}_model`, model);
+                } else {
+                    localStorage.removeItem(`${provider}_model`);
+                }
+            }
+            
+            // Always save to server for current session (including empty values to trigger reset)
+            const config = {};
+            if (apiKey !== undefined) {
+                config.apiKey = apiKey; // Include empty string to reset
+            }
+            if (model !== undefined) {
+                config.model = model; // Include empty string to reset
+            }
+            
+            // Only call saveConfig if we have something to update
+            if (Object.keys(config).length > 0) {
+                await api.saveConfig(provider, config);
             }
         }
         
@@ -164,9 +200,37 @@ async function saveSettings(suppressAlert = false) {
                 console.error('Invalid JSON in headers field');
             }
             
+            // Save to localStorage
             if (endpoint) {
-                await api.saveConfig('local', { endpoint, apiKey, model, headers });
+                localStorage.setItem('local_endpoint', endpoint);
+            } else {
+                localStorage.removeItem('local_endpoint');
             }
+            if (apiKey) {
+                localStorage.setItem('local_apiKey', apiKey);
+            } else {
+                localStorage.removeItem('local_apiKey');
+            }
+            if (model) {
+                localStorage.setItem('local_model', model);
+            } else {
+                localStorage.removeItem('local_model');
+            }
+            localStorage.setItem('local_headers', localElements.headers.value);
+            
+            // Always save to server for current session (including empty values to trigger reset)
+            const localConfig = {};
+            // Always include endpoint even if empty to allow reset
+            localConfig.endpoint = endpoint;
+            if (apiKey !== undefined) {
+                localConfig.apiKey = apiKey;
+            }
+            if (model !== undefined) {
+                localConfig.model = model;
+            }
+            localConfig.headers = headers;
+            
+            await api.saveConfig('local', localConfig);
         }
         
         // Save autoExecuteCommands to localStorage
@@ -180,10 +244,6 @@ async function saveSettings(suppressAlert = false) {
         
         settingsChanged = false;
         elements.modal.style.display = 'none';
-        
-        if (!suppressAlert) {
-            alert('Settings saved successfully!');
-        }
         
         // Trigger callbacks for settings that changed
         if (window.onSettingsSaved) {

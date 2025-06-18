@@ -84,6 +84,7 @@ header > * {
     transform: translateY(-100%);
     text-decoration: none;
     pointer-events: auto;
+    transition: transform 0.2s ease;
 }
 
 .header-title {
@@ -93,6 +94,10 @@ header > * {
     margin: 0;
     line-height: 1;
     transition: opacity 0.2s ease;
+}
+
+.header-title-link:hover {
+    transform: translateY(-100%) scale(1.1) rotate(-4deg);
 }
 
 .header-title-link:hover .header-title {

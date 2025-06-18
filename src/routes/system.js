@@ -80,25 +80,51 @@ router.get('/ffmpeg-status', async (req, res) => {
 
 // Settings endpoints removed - now using localStorage
 
+// Store initial environment configs for reset functionality
+const envConfigs = JSON.parse(JSON.stringify(apiConfigs));
+
 // Update API configuration
 router.post('/config', (req, res) => {
   const { provider, config } = req.body;
   if (apiConfigs[provider]) {
-    // Filter out empty strings and null values to preserve defaults
-    const filteredConfig = {};
-    for (const [key, value] of Object.entries(config)) {
-      // Only set the value if it's not empty string, null, or undefined
-      if (value !== '' && value !== null && value !== undefined) {
-        filteredConfig[key] = value;
+    // Handle API key updates specially
+    if ('apiKey' in config) {
+      if (config.apiKey === '' || config.apiKey === null || config.apiKey === undefined) {
+        // Reset to environment default when cleared
+        apiConfigs[provider].apiKey = envConfigs[provider].apiKey || '';
+      } else {
+        // Set new API key
+        apiConfigs[provider].apiKey = config.apiKey;
       }
     }
-    // Merge configs, keeping existing values for keys not in filteredConfig
-    apiConfigs[provider] = { ...apiConfigs[provider], ...filteredConfig };
     
-    // If model is explicitly empty string, remove it to allow defaults
-    if (config.model === '') {
-      delete apiConfigs[provider].model;
+    // Handle model updates
+    if ('model' in config) {
+      if (config.model === '' || config.model === null || config.model === undefined) {
+        // Reset to environment default or remove if no env default
+        if (envConfigs[provider].model) {
+          apiConfigs[provider].model = envConfigs[provider].model;
+        } else {
+          delete apiConfigs[provider].model;
+        }
+      } else {
+        // Set new model
+        apiConfigs[provider].model = config.model;
+      }
     }
+    
+    // Handle other config properties (like endpoint, headers for local)
+    for (const [key, value] of Object.entries(config)) {
+      if (key !== 'apiKey' && key !== 'model') {
+        if (value !== '' && value !== null && value !== undefined) {
+          apiConfigs[provider][key] = value;
+        } else if (envConfigs[provider][key]) {
+          // Reset to env default
+          apiConfigs[provider][key] = envConfigs[provider][key];
+        }
+      }
+    }
+    
     res.json({ success: true });
   } else {
     res.status(400).json({ error: 'Invalid provider' });

@@ -164,11 +164,15 @@ Operations Reference:
     const aiProvider = await AIProviderFactory.getProvider(provider, config);
     
     const messages = [...conversationHistory, { role: 'user', content: finalMessage }];
-    const chatResponse = await aiProvider.chat(messages, {
-      model: config.model,
+    const chatOptions = {
       temperature: 0,
       maxTokens: 1000
-    });
+    };
+    // Only include model if it exists
+    if (config.model) {
+      chatOptions.model = config.model;
+    }
+    const chatResponse = await aiProvider.chat(messages, chatOptions);
     
     const response = chatResponse.content;
     

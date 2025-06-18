@@ -51,8 +51,7 @@ class AnthropicProvider extends BaseAIProvider {
         model: options.model || this.config.model || 'claude-3-opus-20240229',
         messages: formattedMessages,
         max_tokens: options.maxTokens || 1000,
-        temperature: options.temperature ?? 0,
-        ...options
+        temperature: options.temperature ?? 0
       };
 
       // Add system message if present

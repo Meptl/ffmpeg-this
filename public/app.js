@@ -76,6 +76,56 @@ function handleGlobalScroll(event) {
 // Add wheel event listener to capture scroll anywhere on page
 document.addEventListener('wheel', handleGlobalScroll, { passive: false });
 
+// Sync API keys from localStorage to server
+async function syncLocalStorageToServer() {
+    const providers = ['openai', 'anthropic', 'gemini', 'groq', 'deepseek'];
+    
+    for (const provider of providers) {
+        const apiKey = localStorage.getItem(`${provider}_apiKey`);
+        const model = localStorage.getItem(`${provider}_model`);
+        
+        // Only sync if we have an API key stored
+        if (apiKey !== null) {
+            try {
+                const config = { apiKey };
+                // Only include model if it has a value
+                if (model) {
+                    config.model = model;
+                }
+                await api.saveConfig(provider, config);
+            } catch (error) {
+                console.error(`Error syncing ${provider} config:`, error);
+            }
+        }
+    }
+    
+    // Sync local LLM settings
+    const localEndpoint = localStorage.getItem('local_endpoint');
+    const localApiKey = localStorage.getItem('local_apiKey');
+    const localModel = localStorage.getItem('local_model');
+    const localHeaders = localStorage.getItem('local_headers');
+    
+    if (localEndpoint) {
+        let headers = {};
+        try {
+            headers = JSON.parse(localHeaders || '{}');
+        } catch (e) {
+            headers = {};
+        }
+        
+        try {
+            await api.saveConfig('local', { 
+                endpoint: localEndpoint, 
+                apiKey: localApiKey || undefined, 
+                model: localModel || undefined, 
+                headers 
+            });
+        } catch (error) {
+            console.error('Error syncing local LLM config:', error);
+        }
+    }
+}
+
 async function initialize() {
     // Initialize state from persistent storage
     await initializeState();
@@ -96,6 +146,9 @@ async function initialize() {
     
     // Initialize help modal
     initializeHelp();
+    
+    // Sync API keys from localStorage to server
+    await syncLocalStorageToServer();
     
     window.onSettingsSaved = async () => {
         // Re-check ffmpeg status and reload providers
@@ -777,13 +830,13 @@ function addStructuredMessageToUI(type, rawContent, parsedResponse, executableRe
                     </div>
                     <div class="command-buttons">
                         <button class="execute-btn" data-command="${commandToShow.replace(/"/g, '&quot;')}" data-output="${executableResponse ? executableResponse.output_file.replace(/"/g, '&quot;') : ''}" data-msgid="${id}" onclick="executeFFmpegCommand(this.getAttribute('data-command'), this.getAttribute('data-output'), this.getAttribute('data-msgid'))">
-                            ▶️ Execute
+                            Execute
                         </button>
                         <button class="cancel-execution-btn" data-msgid="${id}" onclick="cancelFFmpegExecution(this.getAttribute('data-msgid'))" style="display: none;">
                             🛑 Cancel
                         </button>
                         ${!autoExecuteCommands ? `<button class="execute-auto-btn" data-command="${commandToShow.replace(/"/g, '&quot;')}" data-output="${executableResponse ? executableResponse.output_file.replace(/"/g, '&quot;') : ''}" data-msgid="${id}" onclick="executeAndToggleAuto(this.getAttribute('data-command'), this.getAttribute('data-output'), this.getAttribute('data-msgid'))">
-                            ⚡ Execute (don't ask again)
+                            Execute (don't ask again)
                         </button>` : ''}
                     </div>
                     <div class="ffmpeg-output-container" id="output-${id}">
