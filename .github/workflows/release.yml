@@ -1,0 +1,115 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - '*'
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Update package.json version from tag
+      if: github.ref_type == 'tag'
+      run: |
+        sed -i 's/"version": ".*"/"version": "'"${{ github.ref_name }}"'"/' package.json
+
+    - name: Build for all platforms
+      run: |
+        npm run build:win
+        npm run build:mac
+        npm run build:linux
+        
+    - name: Make binaries executable
+      run: |
+        chmod +x dist/ffmpeg-this-macos
+        chmod +x dist/ffmpeg-this-linux
+
+    # Delete previous release (tag or main)
+    - name: Delete existing release
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        RELEASE_TAG=""
+        if [[ "${{ github.ref_type }}" == "tag" ]]; then
+          RELEASE_TAG="${{ github.ref_name }}"
+        elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+          RELEASE_TAG="main"
+        fi
+        if [[ -n "$RELEASE_TAG" ]]; then
+          echo "Deleting release $RELEASE_TAG"
+          gh release delete $RELEASE_TAG -y || true
+        else
+          echo "Not a tag or main branch push, skipping release deletion."
+        fi
+
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        # Use tag name for tags, 'main' for main branch
+        tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'main' }}
+        # Use tag name for tags, 'main' for main branch release name
+        release_name: ${{ github.ref_type == 'tag' && github.ref_name || 'main' }}
+        # Use latest commit message for main branch body, default (tag message) for tags
+        body: |
+          ${{ github.ref == 'refs/heads/main' && github.event.head_commit.message || '' }}
+          
+          ## Downloads
+          - **Windows**: ffmpeg-this-win.exe
+          - **macOS**: ffmpeg-this-macos
+          - **Linux**: ffmpeg-this-linux
+        draft: false
+        # Mark main branch releases as pre-release, tags as full releases
+        prerelease: ${{ github.ref == 'refs/heads/main' }}
+        # Mark tagged releases as 'latest', main branch release not
+        latest: ${{ github.ref_type == 'tag' }}
+
+    # Upload Windows build
+    - name: Upload Windows Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./dist/ffmpeg-this-win.exe
+        asset_name: ffmpeg-this-win.exe
+        asset_content_type: application/vnd.microsoft.portable-executable
+
+    # Upload macOS build
+    - name: Upload macOS Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./dist/ffmpeg-this-macos
+        asset_name: ffmpeg-this-macos
+        asset_content_type: application/octet-stream
+
+    # Upload Linux build
+    - name: Upload Linux Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./dist/ffmpeg-this-linux
+        asset_name: ffmpeg-this-linux
+        asset_content_type: application/octet-stream

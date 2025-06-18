@@ -1,6 +1,7 @@
 {
   "name": "ffmpeg-this",
-  "version": "1.0.0",
+  "version": "0.0.0",
+  "_version_comment": "The version is updated in CI",
   "description": "CLI tool for AI chat interface with ffmpeg integration",
   "main": "index.js",
   "bin": {
