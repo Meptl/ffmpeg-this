@@ -711,6 +711,11 @@ header > * {
     border: 1px solid #e9ecef;
 }
 
+/* Command code wrapper for positioning */
+.command-code-wrapper {
+    position: relative;
+}
+
 .command-section strong {
     display: block;
     margin-bottom: 0.5rem;
@@ -723,6 +728,7 @@ header > * {
     border: 1px solid #404040;
     border-radius: 6px;
     padding: 1rem;
+    padding-bottom: 2.5rem; /* Extra padding for copy button */
     margin: 0;
     overflow-x: hidden;
     overflow-wrap: break-word;
@@ -1013,33 +1019,27 @@ header > * {
     flex-wrap: wrap;
 }
 
-/* Copy button styles */
-.copy-btn {
-    background-color: #6c757d;
-    color: white;
+/* Copy button overlay styles */
+.copy-btn-overlay {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    background: transparent;
     border: none;
-    padding: 0.5rem 1rem;
-    border-radius: 4px;
+    padding: 8px;
     cursor: pointer;
-    font-size: 0.9rem;
-    font-weight: 500;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    transition: all 0.3s ease;
+    opacity: 0.6;
+    transition: opacity 0.2s ease;
+    z-index: 10;
 }
 
-.copy-btn:hover:not(:disabled) {
-    background-color: #5a6268;
-    transform: translateY(-1px);
+.copy-btn-overlay:hover {
+    opacity: 1;
 }
 
-.copy-btn.copied {
-    background-color: #28a745;
-}
-
-.copy-btn.error {
-    background-color: #dc3545;
+.copy-btn-overlay img {
+    display: block;
+    filter: invert(1); /* Make the icon white */
 }
 
 /* Execute button styles */

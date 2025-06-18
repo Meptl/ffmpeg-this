@@ -769,11 +769,13 @@ function addStructuredMessageToUI(type, rawContent, parsedResponse, executableRe
         structuredHTML += `
             <div class="message-content structured-content">
                 <div class="command-section">
-                    <pre><code>${commandToShow}</code></pre>
-                    <div class="command-buttons">
-                        <button class="copy-btn" data-command="${commandToShow.replace(/"/g, '&quot;')}" onclick="copyToClipboard(this.getAttribute('data-command'), this)">
-                            📋 Copy Command
+                    <div class="command-code-wrapper">
+                        <pre><code>${commandToShow}</code></pre>
+                        <button class="copy-btn-overlay" data-command="${commandToShow.replace(/"/g, '&quot;')}" onclick="copyToClipboard(this.getAttribute('data-command'), this)" title="Copy command">
+                            <img src="assets/copy.svg" alt="Copy" width="20" height="20">
                         </button>
+                    </div>
+                    <div class="command-buttons">
                         <button class="execute-btn" data-command="${commandToShow.replace(/"/g, '&quot;')}" data-output="${executableResponse ? executableResponse.output_file.replace(/"/g, '&quot;') : ''}" data-msgid="${id}" onclick="executeFFmpegCommand(this.getAttribute('data-command'), this.getAttribute('data-output'), this.getAttribute('data-msgid'))">
                             ▶️ Execute
                         </button>
@@ -984,16 +986,11 @@ async function copyToClipboard(command, buttonElement) {
     try {
         await navigator.clipboard.writeText(command);
         
-        // Update button to show success
-        const originalText = buttonElement.innerHTML;
-        buttonElement.innerHTML = '✅ Copied!';
-        buttonElement.classList.add('copied');
-        
-        // Reset button after 2 seconds
+        // Visual feedback - briefly change opacity
+        buttonElement.style.opacity = '0.5';
         setTimeout(() => {
-            buttonElement.innerHTML = originalText;
-            buttonElement.classList.remove('copied');
-        }, 2000);
+            buttonElement.style.opacity = '1';
+        }, 200);
         
     } catch (error) {
         
@@ -1006,27 +1003,18 @@ async function copyToClipboard(command, buttonElement) {
         try {
             document.execCommand('copy');
             
-            // Update button to show success
-            const originalText = buttonElement.innerHTML;
-            buttonElement.innerHTML = '✅ Copied!';
-            buttonElement.classList.add('copied');
-            
+            // Visual feedback
+            buttonElement.style.opacity = '0.5';
             setTimeout(() => {
-                buttonElement.innerHTML = originalText;
-                buttonElement.classList.remove('copied');
-            }, 2000);
+                buttonElement.style.opacity = '1';
+            }, 200);
             
         } catch (fallbackError) {
-            
-            // Show error state
-            const originalText = buttonElement.innerHTML;
-            buttonElement.innerHTML = '❌ Copy Failed';
-            buttonElement.classList.add('error');
-            
+            // Brief error indication
+            buttonElement.style.opacity = '0.3';
             setTimeout(() => {
-                buttonElement.innerHTML = originalText;
-                buttonElement.classList.remove('error');
-            }, 2000);
+                buttonElement.style.opacity = '1';
+            }, 500);
         }
         
         document.body.removeChild(textarea);
