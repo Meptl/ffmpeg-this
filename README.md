@@ -1,27 +1,16 @@
-# FFmpeg This
+# FFmpeg-this
 
-A tool that starts a local web server with an AI chat interface supporting multiple providers.
+A chat interface to run ffmpeg commands.
 
 ## Installation
 
-```bash
-npm install
-```
-
-## Usage
-
-Start the server:
-```bash
-npm start
-# or with pre-configured file
-./cli.js --file /path/to/your/video.mp4
-```
+See the executables in the releases page.
 
 ## Configuration
 
 ### Environment Variables
 
-The server automatically reads API keys from environment variables on startup:
+The app automatically reads API keys from environment variables on startup:
 - `OPENAI_API_KEY` - OpenAI API key
 - `ANTHROPIC_API_KEY` - Anthropic (Claude) API key
 - `GEMINI_API_KEY` or `GOOGLE_API_KEY` - Google Gemini API key
@@ -37,19 +26,6 @@ You can also set custom models via environment variables:
 - `GROQ_MODEL` (default: mixtral-8x7b-32768)
 - `DEEPSEEK_MODEL` (default: deepseek-chat)
 - `LOCAL_LLM_MODEL`
-
-Only providers with configured API keys will appear in the chat dropdown.
-
-## FFmpeg Integration
-
-FFmpeg is bundled with the application via ffmpeg-static, so no installation is required.
-
-## Persistent Settings
-
-The app saves certain settings persistently to your config directory:
-- **macOS**: `~/Library/Application Support/ffmpeg-this/`
-- **Linux**: `$XDG_CONFIG_HOME/ffmpeg-this/` or `~/.config/ffmpeg-this/`
-- **Windows**: `%APPDATA%/ffmpeg-this/`
 
 ## TODO
 I only tested: openai and anthropic.
