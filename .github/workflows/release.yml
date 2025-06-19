@@ -41,38 +41,6 @@ jobs:
         name: ffmpeg-this-win-x64
         path: dist/ffmpeg-this-win-x64.exe
 
-  build-windows-ia32:
-    runs-on: windows-latest
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        submodules: recursive
-
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '18'
-
-    - name: Install dependencies
-      run: npm ci --include=dev
-
-    - name: Update package.json version from tag
-      if: github.ref_type == 'tag'
-      run: |
-        $content = Get-Content package.json -Raw
-        $content = $content -replace '"version": ".*"', '"version": "${{ github.ref_name }}"'
-        Set-Content package.json $content
-      shell: powershell
-
-    - name: Build Windows ia32
-      run: npm run build:win-ia32
-
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: ffmpeg-this-win-ia32
-        path: dist/ffmpeg-this-win-ia32.exe
 
   build-macos-x64:
     runs-on: macos-latest
@@ -207,7 +175,7 @@ jobs:
         path: dist/ffmpeg-this-linux-arm64
 
   release:
-    needs: [build-windows-x64, build-windows-ia32, build-macos-x64, build-macos-arm64, build-linux-x64, build-linux-arm64]
+    needs: [build-windows-x64, build-macos-x64, build-macos-arm64, build-linux-x64, build-linux-arm64]
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
@@ -263,16 +231,6 @@ jobs:
         asset_name: ffmpeg-this-win-x64.exe
         asset_content_type: application/vnd.microsoft.portable-executable
 
-    # Upload Windows ia32 build
-    - name: Upload Windows ia32 Release Asset
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./ffmpeg-this-win-ia32/ffmpeg-this-win-ia32.exe
-        asset_name: ffmpeg-this-win-ia32.exe
-        asset_content_type: application/vnd.microsoft.portable-executable
 
     # Upload macOS x64 build
     - name: Upload macOS x64 Release Asset

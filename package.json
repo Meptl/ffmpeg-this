@@ -13,7 +13,6 @@
     "prepare-ffmpeg": "cd ffmpeg-static && ./build-packages.js && cd packages/ffmpeg-static && npm install && cd ../ffprobe-static && npm install",
     "prepare-ffmpeg-win": "cd ffmpeg-static && node build-packages.js && cd packages\\ffmpeg-static && npm install && cd ..\\ffprobe-static && npm install",
     "build:win-x64": "cross-env npm_config_platform=win32 npm_config_arch=x64 npm run prepare-ffmpeg-win && pkg . --targets node18-win-x64 --output dist/ffmpeg-this-win-x64.exe",
-    "build:win-ia32": "cross-env npm_config_platform=win32 npm_config_arch=ia32 npm run prepare-ffmpeg-win && pkg . --targets node18-win-ia32 --output dist/ffmpeg-this-win-ia32.exe",
     "build:mac-x64": "cross-env npm_config_platform=darwin npm_config_arch=x64 npm run prepare-ffmpeg && pkg . --targets node18-macos-x64 --output dist/ffmpeg-this-macos-x64",
     "build:mac-arm64": "cross-env npm_config_platform=darwin npm_config_arch=arm64 npm run prepare-ffmpeg && pkg . --targets node18-macos-arm64 --output dist/ffmpeg-this-macos-arm64",
     "build:linux-x64": "cross-env npm_config_platform=linux npm_config_arch=x64 npm run prepare-ffmpeg && pkg . --targets node18-linux-x64 --output dist/ffmpeg-this-linux-x64",
