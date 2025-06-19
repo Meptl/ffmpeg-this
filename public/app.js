@@ -47,6 +47,33 @@ function getProviderDisplayName(provider) {
 // Initialize on load
 initialize();
 
+// Set up a MutationObserver to automatically set volume for newly added media elements
+const mediaObserver = new MutationObserver((mutations) => {
+    let hasNewMedia = false;
+    
+    mutations.forEach((mutation) => {
+        mutation.addedNodes.forEach((node) => {
+            if (node.nodeType === Node.ELEMENT_NODE) {
+                // Check if the added node is or contains audio/video elements
+                if (node.tagName === 'AUDIO' || node.tagName === 'VIDEO' ||
+                    (node.querySelectorAll && (node.querySelectorAll('audio, video').length > 0))) {
+                    hasNewMedia = true;
+                }
+            }
+        });
+    });
+    
+    if (hasNewMedia) {
+        // Small delay to ensure elements are fully rendered
+    }
+});
+
+// Start observing the document body for changes
+mediaObserver.observe(document.body, {
+    childList: true,
+    subtree: true
+});
+
 // Global scroll handler for chat messages
 function handleGlobalScroll(event) {
     // Check if any modal is active
@@ -145,6 +172,9 @@ async function initialize() {
     
     // Initialize help modal
     initializeHelp();
+    
+    // Initialize volume manager
+    volumeManager.observeNewMedia();
     
     // Sync API keys from localStorage to server
     await syncLocalStorageToServer();
@@ -507,14 +537,11 @@ function showChatInterface() {
         const messages = messageManager.getMessages();
         if (!messages.some(msg => msg.type === 'initial-file')) {
             messageManager.addInitialFileMessage(initialFile);
+            // Also add the initial file embed to the UI
+            addInitialFileEmbed();
         }
     }
     
-    // Re-render any existing messages to respect the current toggle state
-    const messages = messageManager.getMessages();
-    if (messages.length > 0) {
-        reRenderAllMessages();
-    }
 }
 
 // Add initial media embed when chat starts
@@ -547,6 +574,8 @@ function addInitialFileEmbed() {
     } else {
         messagesDiv.insertBefore(messageDiv, messagesDiv.firstChild);
     }
+    
+    // Set default volume for media elements
     
     // Scroll to bottom after delay
     scrollToBottomAfterDelay();
@@ -811,52 +840,6 @@ function addMessage(type, content, isLoading = false, hasParsingWarning = false)
 }
 
 
-// Re-render all messages
-function reRenderAllMessages() {
-    messagesDiv.innerHTML = '';
-    
-    const messages = messageManager.getMessages();
-    
-    // First pass: find the most recent media
-    let lastMediaPath = null;
-    messages.forEach(msgData => {
-        if (msgData.type === 'initial-file' && initialFile) {
-            lastMediaPath = initialFile.filePath;
-        } else if (msgData.type === 'output-media') {
-            lastMediaPath = msgData.outputFilePath || msgData.filePath;
-        }
-    });
-    mostRecentMediaPath = lastMediaPath;
-    
-    messages.forEach((msgData) => {
-        if (msgData.type === 'initial-file') {
-            // Re-render initial file embed
-            addInitialFileEmbed();
-        } else if (msgData.type === 'assistant' && msgData.parsedResponse) {
-            addStructuredMessageToUI('assistant', msgData.content, msgData.parsedResponse, msgData.executableData);
-        } else if (msgData.type === 'user') {
-            addMessageToUI('user', msgData.content);
-        } else if (msgData.type === 'output-media') {
-            // Re-render output media messages
-            const messageDiv = document.createElement('div');
-            messageDiv.className = 'message assistant output-media';
-            messageDiv.id = msgData.id || `msg-${Date.now() + Math.random()}`;
-            
-            const filePath = msgData.outputFilePath || msgData.filePath;
-            const showRegionBtn = filePath === mostRecentMediaPath;
-            const mediaEmbed = createMediaEmbed(filePath, msgData.fileName, true, false, showRegionBtn);
-            messageDiv.innerHTML = `
-                <div class="message-content">
-                    ${mediaEmbed}
-                </div>
-            `;
-            
-            messagesDiv.appendChild(messageDiv);
-        } else {
-            addMessageToUI(msgData.type, msgData.content || msgData.humanView || msgData.rawView);
-        }
-    });
-}
 
 // Add message to UI only (without storing data)
 function addMessageToUI(type, content, isLoading = false, hasParsingWarning = false) {
@@ -1511,6 +1494,8 @@ function addOutputMediaMessage(outputFilePath, afterMessageId) {
         messagesDiv.appendChild(messageDiv);
     }
     
+    // Set default volume for media elements
+    
     // Scroll to bottom after delay
     scrollToBottomAfterDelay();
     
@@ -1699,6 +1684,70 @@ if (!document.getElementById('copy-feedback-styles')) {
     `;
     document.head.appendChild(style);
 }
+
+// Volume synchronization management
+const volumeManager = {
+    storageKey: 'mediaPlayerVolume',
+    defaultVolume: 1.0,
+    
+    // Get saved volume from localStorage
+    getSavedVolume() {
+        const saved = localStorage.getItem(this.storageKey);
+        return saved ? parseFloat(saved) : this.defaultVolume;
+    },
+    
+    // Save volume to localStorage
+    saveVolume(volume) {
+        localStorage.setItem(this.storageKey, volume.toString());
+    },
+    
+    // Apply volume to all media elements
+    applyVolumeToAll(volume) {
+        const mediaElements = document.querySelectorAll('audio, video');
+        mediaElements.forEach(element => {
+            element.volume = volume;
+        });
+    },
+    
+    // Initialize volume for a media element
+    initializeMediaElement(element) {
+        const savedVolume = this.getSavedVolume();
+        element.volume = savedVolume;
+        
+        // Add volume change listener
+        element.addEventListener('volumechange', (e) => {
+            const newVolume = e.target.volume;
+            this.saveVolume(newVolume);
+            // Sync to all other media elements
+            this.applyVolumeToAll(newVolume);
+        });
+    },
+    
+    // Watch for new media elements and initialize them
+    observeNewMedia() {
+        const observer = new MutationObserver((mutations) => {
+            mutations.forEach(mutation => {
+                mutation.addedNodes.forEach(node => {
+                    if (node.nodeType === 1) { // Element node
+                        // Check if the node itself is a media element
+                        if (node.tagName === 'AUDIO' || node.tagName === 'VIDEO') {
+                            this.initializeMediaElement(node);
+                        }
+                        // Check for media elements within the added node
+                        const mediaElements = node.querySelectorAll?.('audio, video');
+                        mediaElements?.forEach(element => {
+                            this.initializeMediaElement(element);
+                        });
+                    }
+                });
+            });
+        });
+        
+        // Start observing the messages container for changes
+        observer.observe(messagesDiv, { childList: true, subtree: true });
+    }
+};
+
 
 // Helper function to scroll to bottom after adding message
 function scrollToBottomAfterDelay() {
