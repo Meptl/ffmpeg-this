@@ -11,10 +11,9 @@
     "start": "node cli.js",
     "dev": "nodemon cli.js --no-open",
     "prepare-ffmpeg": "cd ffmpeg-static && ./build-packages.js && cd packages/ffmpeg-static && npm install && cd ../ffprobe-static && npm install",
-    "build": "npm run prepare-ffmpeg && npm run build:win && npm run build:mac && npm run build:linux",
-    "build:win": "pkg . --targets node18-win-x64 --output dist/ffmpeg-this-win.exe",
-    "build:mac": "pkg . --targets node18-macos-x64 --output dist/ffmpeg-this-macos",
-    "build:linux": "pkg . --targets node18-linux-x64 --output dist/ffmpeg-this-linux"
+    "build:win": "npm run prepare-ffmpeg && pkg . --targets node18-win-x64 --output dist/ffmpeg-this-win.exe",
+    "build:mac": "npm run prepare-ffmpeg && pkg . --targets node18-macos-x64 --output dist/ffmpeg-this-macos",
+    "build:linux": "npm run prepare-ffmpeg && pkg . --targets node18-linux-x64 --output dist/ffmpeg-this-linux"
   },
   "keywords": [
     "ffmpeg",
