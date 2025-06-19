@@ -68,13 +68,7 @@ jobs:
         # Use tag name for tags, 'main' for main branch release name
         release_name: ${{ github.ref_type == 'tag' && github.ref_name || 'main' }}
         # Use latest commit message for main branch body, default (tag message) for tags
-        body: |
-          ${{ github.ref == 'refs/heads/main' && github.event.head_commit.message || '' }}
-          
-          ## Downloads
-          - **Windows**: ffmpeg-this-win.exe
-          - **macOS**: ffmpeg-this-macos
-          - **Linux**: ffmpeg-this-linux
+        body: ${{ github.ref == 'refs/heads/main' && github.event.head_commit.message || '' }}
         draft: false
         # Mark main branch releases as pre-release, tags as full releases
         prerelease: ${{ github.ref == 'refs/heads/main' }}
