@@ -4,7 +4,16 @@ A chat interface to run ffmpeg commands.
 
 ## Installation
 
+### Executeable
 See the executables in the releases page.
+
+### Local
+```
+git submodule update --init --recursive
+npm prepare-ffmpeg
+npm install
+npm run dev
+```
 
 ## Configuration
 

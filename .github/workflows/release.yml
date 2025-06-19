@@ -32,15 +32,24 @@ jobs:
 
     - name: Build for all platforms
       run: |
-        npm run prepare-ffmpeg
-        npm run build:win
-        npm run build:mac
-        npm run build:linux
+        # Windows builds
+        npm run build:win-x64
+        npm run build:win-ia32
+        
+        # macOS builds
+        npm run build:mac-x64
+        npm run build:mac-arm64
+        
+        # Linux builds
+        npm run build:linux-x64
+        npm run build:linux-arm64
         
     - name: Make binaries executable
       run: |
-        chmod +x dist/ffmpeg-this-macos
-        chmod +x dist/ffmpeg-this-linux
+        chmod +x dist/ffmpeg-this-macos-x64
+        chmod +x dist/ffmpeg-this-macos-arm64
+        chmod +x dist/ffmpeg-this-linux-x64
+        chmod +x dist/ffmpeg-this-linux-arm64
 
     # Delete previous release (tag or main)
     - name: Delete existing release
@@ -78,35 +87,68 @@ jobs:
         # Mark tagged releases as 'latest', main branch release not
         latest: ${{ github.ref_type == 'tag' }}
 
-    # Upload Windows build
-    - name: Upload Windows Release Asset
+    # Upload Windows x64 build
+    - name: Upload Windows x64 Release Asset
       uses: actions/upload-release-asset@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./dist/ffmpeg-this-win.exe
-        asset_name: ffmpeg-this-win.exe
+        asset_path: ./dist/ffmpeg-this-win-x64.exe
+        asset_name: ffmpeg-this-win-x64.exe
         asset_content_type: application/vnd.microsoft.portable-executable
 
-    # Upload macOS build
-    - name: Upload macOS Release Asset
+    # Upload Windows ia32 build
+    - name: Upload Windows ia32 Release Asset
       uses: actions/upload-release-asset@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./dist/ffmpeg-this-macos
-        asset_name: ffmpeg-this-macos
+        asset_path: ./dist/ffmpeg-this-win-ia32.exe
+        asset_name: ffmpeg-this-win-ia32.exe
+        asset_content_type: application/vnd.microsoft.portable-executable
+
+    # Upload macOS x64 build
+    - name: Upload macOS x64 Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./dist/ffmpeg-this-macos-x64
+        asset_name: ffmpeg-this-macos-x64
         asset_content_type: application/octet-stream
 
-    # Upload Linux build
-    - name: Upload Linux Release Asset
+    # Upload macOS arm64 build
+    - name: Upload macOS arm64 Release Asset
       uses: actions/upload-release-asset@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./dist/ffmpeg-this-linux
-        asset_name: ffmpeg-this-linux
+        asset_path: ./dist/ffmpeg-this-macos-arm64
+        asset_name: ffmpeg-this-macos-arm64
+        asset_content_type: application/octet-stream
+
+    # Upload Linux x64 build
+    - name: Upload Linux x64 Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./dist/ffmpeg-this-linux-x64
+        asset_name: ffmpeg-this-linux-x64
+        asset_content_type: application/octet-stream
+
+    # Upload Linux arm64 build
+    - name: Upload Linux arm64 Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./dist/ffmpeg-this-linux-arm64
+        asset_name: ffmpeg-this-linux-arm64
         asset_content_type: application/octet-stream

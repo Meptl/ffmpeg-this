@@ -11,9 +11,12 @@
     "start": "node cli.js",
     "dev": "nodemon cli.js --no-open",
     "prepare-ffmpeg": "cd ffmpeg-static && ./build-packages.js && cd packages/ffmpeg-static && npm install && cd ../ffprobe-static && npm install",
-    "build:win": "npm run prepare-ffmpeg && pkg . --targets node18-win-x64 --output dist/ffmpeg-this-win.exe",
-    "build:mac": "npm run prepare-ffmpeg && pkg . --targets node18-macos-x64 --output dist/ffmpeg-this-macos",
-    "build:linux": "npm run prepare-ffmpeg && pkg . --targets node18-linux-x64 --output dist/ffmpeg-this-linux"
+    "build:win-x64": "npm_config_platform=win32 npm_config_arch=x64 npm run prepare-ffmpeg && pkg . --targets node18-win-x64 --output dist/ffmpeg-this-win-x64.exe",
+    "build:win-ia32": "npm_config_platform=win32 npm_config_arch=ia32 npm run prepare-ffmpeg && pkg . --targets node18-win-ia32 --output dist/ffmpeg-this-win-ia32.exe",
+    "build:mac-x64": "npm_config_platform=darwin npm_config_arch=x64 npm run prepare-ffmpeg && pkg . --targets node18-macos-x64 --output dist/ffmpeg-this-macos-x64",
+    "build:mac-arm64": "npm_config_platform=darwin npm_config_arch=arm64 npm run prepare-ffmpeg && pkg . --targets node18-macos-arm64 --output dist/ffmpeg-this-macos-arm64",
+    "build:linux-x64": "npm_config_platform=linux npm_config_arch=x64 npm run prepare-ffmpeg && pkg . --targets node18-linux-x64 --output dist/ffmpeg-this-linux-x64",
+    "build:linux-arm64": "npm_config_platform=linux npm_config_arch=arm64 npm run prepare-ffmpeg && pkg . --targets node18-linux-arm64 --output dist/ffmpeg-this-linux-arm64"
   },
   "keywords": [
     "ffmpeg",
