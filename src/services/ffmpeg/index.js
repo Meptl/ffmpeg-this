@@ -21,7 +21,7 @@ if (process.pkg) {
   }
   
   // Extract ffmpeg binary
-  const ffmpegSrc = path.join(__dirname, '..', '..', '..', 'node_modules', 'ffmpeg-static', 'ffmpeg' + (process.platform === 'win32' ? '.exe' : ''));
+  const ffmpegSrc = path.join(__dirname, '..', '..', '..', 'ffmpeg-static', 'packages', 'ffmpeg-static', 'ffmpeg' + (process.platform === 'win32' ? '.exe' : ''));
   ffmpegPath = path.join(tmpDir, 'ffmpeg' + (process.platform === 'win32' ? '.exe' : ''));
   
   try {
@@ -35,7 +35,7 @@ if (process.pkg) {
   }
   
   // Extract ffprobe binary
-  const ffprobeSrc = path.join(__dirname, '..', '..', '..', 'node_modules', 'ffprobe-static', 'ffprobe' + (process.platform === 'win32' ? '.exe' : ''));
+  const ffprobeSrc = path.join(__dirname, '..', '..', '..', 'ffmpeg-static', 'packages', 'ffprobe-static', 'ffprobe' + (process.platform === 'win32' ? '.exe' : ''));
   ffprobePath = path.join(tmpDir, 'ffprobe' + (process.platform === 'win32' ? '.exe' : ''));
   
   try {
@@ -45,7 +45,7 @@ if (process.pkg) {
     }
   } catch (e) {
     console.error('Failed to extract ffprobe binary:', e);
-    ffprobePath = require('ffprobe-static');
+    ffprobePath = require('ffprobe-static').path;
   }
 } else {
   // Normal execution - use the modules directly
