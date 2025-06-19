@@ -56,6 +56,8 @@ if (process.pkg) {
 class FFmpegService {
   constructor() {
     this.commandExecutor = new FFmpegCommandExecutor();
+    this.ffmpegPath = ffmpegPath;
+    this.ffprobePath = ffprobePath;
   }
 
   _calculateRotationFromDisplayMatrix(sideDataList) {

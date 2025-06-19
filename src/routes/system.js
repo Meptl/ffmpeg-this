@@ -71,7 +71,12 @@ if (process.env.LOCAL_LLM_MODEL) apiConfigs.local.model = process.env.LOCAL_LLM_
 router.get('/ffmpeg-status', async (req, res) => {
   try {
     const result = await ffmpegService.checkAvailability();
-    res.json(result);
+    // Add ffmpeg and ffprobe paths to the response
+    res.json({
+      ...result,
+      ffmpegPath: ffmpegService.ffmpegPath,
+      ffprobePath: ffmpegService.ffprobePath
+    });
     
   } catch (error) {
     res.json({ available: false, error: error.message });

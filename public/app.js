@@ -566,8 +566,12 @@ async function checkFFmpegStatus() {
             messageInput.disabled = true;
             sendBtn.disabled = true;
             
-            // Show error message
-            addMessage('error', 'FFmpeg not found.');
+            // Show error message with path info if available
+            let errorMsg = 'FFmpeg not found.';
+            if (data.ffmpegPath) {
+                errorMsg += `\n\nFFmpeg path: ${data.ffmpegPath}`;
+            }
+            addMessage('error', errorMsg);
             
             return false;
         } else {
