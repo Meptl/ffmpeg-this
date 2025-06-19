@@ -4,52 +4,37 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-// Handle ffmpeg path for pkg bundles
+// Handle ffmpeg path - always extract to temp for testing
 let ffmpegPath;
 let ffprobePath;
 
-if (process.pkg) {
-  // We're running in a pkg bundle - need to extract binaries
-  // pkg bundles files into a virtual filesystem that exists only within the Node.js process.
-  // The OS kernel cannot execute binaries from this internal filesystem - it needs real
-  // filesystem paths. So we must extract the ffmpeg/ffprobe binaries from pkg's virtual
-  // filesystem to the actual filesystem (even if it's tmpfs in RAM) where the OS can
-  // execute them via spawn().
-  const tmpDir = path.join(os.tmpdir(), 'ffmpeg-this-binaries');
-  if (!fs.existsSync(tmpDir)) {
-    fs.mkdirSync(tmpDir, { recursive: true });
-  }
-  
-  // Extract ffmpeg binary
-  const ffmpegSrc = path.join(__dirname, '..', '..', '..', 'ffmpeg-static', 'packages', 'ffmpeg-static', 'ffmpeg' + (process.platform === 'win32' ? '.exe' : ''));
-  ffmpegPath = path.join(tmpDir, 'ffmpeg' + (process.platform === 'win32' ? '.exe' : ''));
-  
-  try {
-    if (!fs.existsSync(ffmpegPath)) {
-      fs.copyFileSync(ffmpegSrc, ffmpegPath);
-      fs.chmodSync(ffmpegPath, 0o755);
-    }
-  } catch (e) {
-    console.error('Failed to extract ffmpeg binary:', e);
-    ffmpegPath = require('ffmpeg-static');
-  }
-  
-  // Extract ffprobe binary
-  const ffprobeSrc = path.join(__dirname, '..', '..', '..', 'ffmpeg-static', 'packages', 'ffprobe-static', 'ffprobe' + (process.platform === 'win32' ? '.exe' : ''));
-  ffprobePath = path.join(tmpDir, 'ffprobe' + (process.platform === 'win32' ? '.exe' : ''));
-  
-  try {
-    if (!fs.existsSync(ffprobePath)) {
-      fs.copyFileSync(ffprobeSrc, ffprobePath);
-      fs.chmodSync(ffprobePath, 0o755);
-    }
-  } catch (e) {
-    console.error('Failed to extract ffprobe binary:', e);
-    ffprobePath = require('ffprobe-static').path;
-  }
-} else {
-  // Normal execution - use the modules directly
+// Always extract binaries to temp directory for consistent testing
+const tmpDir = path.join(os.tmpdir(), 'ffmpeg-this');
+if (!fs.existsSync(tmpDir)) {
+  fs.mkdirSync(tmpDir, { recursive: true });
+}
+
+// Extract ffmpeg binary
+const ffmpegSrc = path.join(__dirname, '..', '..', '..', 'ffmpeg-static', 'packages', 'ffmpeg-static', 'ffmpeg' + (process.platform === 'win32' ? '.exe' : ''));
+ffmpegPath = path.join(tmpDir, 'ffmpeg' + (process.platform === 'win32' ? '.exe' : ''));
+
+try {
+  fs.copyFileSync(ffmpegSrc, ffmpegPath);
+  fs.chmodSync(ffmpegPath, 0o755);
+} catch (e) {
+  console.error('Failed to extract ffmpeg binary:', e);
   ffmpegPath = require('ffmpeg-static');
+}
+
+// Extract ffprobe binary
+const ffprobeSrc = path.join(__dirname, '..', '..', '..', 'ffmpeg-static', 'packages', 'ffprobe-static', 'ffprobe' + (process.platform === 'win32' ? '.exe' : ''));
+ffprobePath = path.join(tmpDir, 'ffprobe' + (process.platform === 'win32' ? '.exe' : ''));
+
+try {
+  fs.copyFileSync(ffprobeSrc, ffprobePath);
+  fs.chmodSync(ffprobePath, 0o755);
+} catch (e) {
+  console.error('Failed to extract ffprobe binary:', e);
   ffprobePath = require('ffprobe-static').path;
 }
 
