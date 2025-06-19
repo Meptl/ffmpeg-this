@@ -35,9 +35,7 @@ if (process.pkg) {
   }
   
   // Extract ffprobe binary
-  const platform = process.platform === 'darwin' ? 'darwin' : process.platform;
-  const arch = process.arch;
-  const ffprobeSrc = path.join(__dirname, '..', '..', '..', 'node_modules', 'ffprobe-static', 'bin', platform, arch, 'ffprobe' + (process.platform === 'win32' ? '.exe' : ''));
+  const ffprobeSrc = path.join(__dirname, '..', '..', '..', 'node_modules', 'ffprobe-static', 'ffprobe' + (process.platform === 'win32' ? '.exe' : ''));
   ffprobePath = path.join(tmpDir, 'ffprobe' + (process.platform === 'win32' ? '.exe' : ''));
   
   try {
@@ -47,7 +45,7 @@ if (process.pkg) {
     }
   } catch (e) {
     console.error('Failed to extract ffprobe binary:', e);
-    ffprobePath = require('ffprobe-static').path;
+    ffprobePath = require('ffprobe-static');
   }
 } else {
   // Normal execution - use the modules directly

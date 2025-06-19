@@ -27,5 +27,11 @@ You can also set custom models via environment variables:
 - `DEEPSEEK_MODEL` (default: deepseek-chat)
 - `LOCAL_LLM_MODEL`
 
+## Notes
+We are including ffmpeg-static as a submodule because ffprobe-static includes
+all architecture executables.
+See https://github.com/eugeneware/ffmpeg-static/issues/19
+
+
 ## TODO
 I only tested: openai and anthropic.
