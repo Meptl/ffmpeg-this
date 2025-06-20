@@ -915,7 +915,7 @@ function addStructuredMessageToUI(type, rawContent, parsedResponse, executableRe
                 <div class="command-section">
                     <div class="command-code-wrapper">
                         <pre><code>${commandToShow}</code></pre>
-                        <button class="copy-btn-overlay" data-command="${commandToShow.replace(/"/g, '&quot;')}" onclick="copyToClipboard(this.getAttribute('data-command'), this)" title="Copy command">
+                        <button class="copy-btn-overlay" data-command="${commandToShow.replace(/"/g, '&quot;')}" onclick="copyToClipboard(this.getAttribute('data-command'), this, event)" title="Copy command">
                             <img src="assets/copy.svg" alt="Copy" width="20" height="20">
                         </button>
                     </div>
@@ -1032,8 +1032,13 @@ function createMediaEmbed(filePath, fileName, isResponseMedia = false, hideDownl
                             <div class="region-selection-overlay"></div>
                             <button class="clear-region-btn" onclick="clearRegionSelection(this)">Clear</button>
                         </div>
-                        ${showRegionButton ? '<button class="region-select-btn" onclick="toggleRegionSelectMode(this)" title="Select Region"><img src="assets/crop.svg" alt="Select Region" width="20" height="20" style="vertical-align: middle;"></button>' : ''}
-                        ${downloadButton}
+                        <div class="media-buttons-vertical">
+                            ${showRegionButton ? '<button class="region-select-btn" onclick="toggleRegionSelectMode(this)" title="Select Region"><img src="assets/crop.svg" alt="Select Region" width="20" height="20" style="vertical-align: middle;"></button>' : ''}
+                            <button class="copy-media-btn" onclick="copyMedia(this, event)" title="Copy Video Frame">
+                                <img src="assets/copy.svg" alt="Copy" width="20" height="20">
+                            </button>
+                            ${downloadButton}
+                        </div>
                     </div>`;
             } else {
                 return `
@@ -1059,8 +1064,13 @@ function createMediaEmbed(filePath, fileName, isResponseMedia = false, hideDownl
                             <div class="region-selection-overlay"></div>
                             <button class="clear-region-btn" onclick="clearRegionSelection(this)">Clear</button>
                         </div>
-                        ${showRegionButton ? '<button class="region-select-btn" onclick="toggleRegionSelectMode(this)" title="Select Region"><img src="assets/crop.svg" alt="Select Region" width="20" height="20" style="vertical-align: middle;"></button>' : ''}
-                        ${downloadButton}
+                        <div class="media-buttons-vertical">
+                            ${showRegionButton ? '<button class="region-select-btn" onclick="toggleRegionSelectMode(this)" title="Select Region"><img src="assets/crop.svg" alt="Select Region" width="20" height="20" style="vertical-align: middle;"></button>' : ''}
+                            <button class="copy-media-btn" onclick="copyMedia(this, event)" title="Copy Image">
+                                <img src="assets/copy.svg" alt="Copy" width="20" height="20">
+                            </button>
+                            ${downloadButton}
+                        </div>
                     </div>`;
             } else {
                 return `
@@ -1126,15 +1136,18 @@ function downloadFile(filePath, fileName) {
 }
 
 // Copy command to clipboard
-async function copyToClipboard(command, buttonElement) {
+async function copyToClipboard(command, buttonElement, event) {
     try {
         await navigator.clipboard.writeText(command);
         
         // Visual feedback - briefly change opacity
         buttonElement.style.opacity = '0.5';
         setTimeout(() => {
-            buttonElement.style.opacity = '1';
+            buttonElement.style.opacity = '';
         }, 200);
+        
+        // Show "Copied!" message at mouse location
+        showCopyToast(event || window.event);
         
     } catch (error) {
         
@@ -1153,6 +1166,9 @@ async function copyToClipboard(command, buttonElement) {
                 buttonElement.style.opacity = '1';
             }, 200);
             
+            // Show "Copied!" message at mouse location
+            showCopyToast(event || window.event);
+            
         } catch (fallbackError) {
             // Brief error indication
             buttonElement.style.opacity = '0.3';
@@ -1163,6 +1179,99 @@ async function copyToClipboard(command, buttonElement) {
         
         document.body.removeChild(textarea);
     }
+}
+
+// Copy media (image or video frame) to clipboard
+window.copyMedia = function(buttonElement, event) {
+    // Show immediate feedback
+    showCopyToast(event || { clientX: window.lastMouseX || 100, clientY: window.lastMouseY || 100 });
+    
+    // Start the async copy operation
+    copyMediaAsync(buttonElement, event);
+}
+
+async function copyMediaAsync(buttonElement, event) {
+    try {
+        // Find the media element in the same container
+        const mediaContainer = buttonElement.closest('.media-embed');
+        const mediaElement = mediaContainer.querySelector('img, video');
+        
+        if (!mediaElement) {
+            console.error('No media element found');
+            return;
+        }
+        
+        // Get the source URL
+        const src = mediaElement.src || mediaElement.currentSrc;
+        if (!src) return;
+        
+        // Update mouse position from click event
+        if (event) {
+            window.lastMouseX = event.clientX;
+            window.lastMouseY = event.clientY;
+        }
+        
+        if (mediaElement.tagName === 'VIDEO') {
+            // Create a canvas to capture the current video frame
+            const canvas = document.createElement('canvas');
+            canvas.width = mediaElement.videoWidth;
+            canvas.height = mediaElement.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(mediaElement, 0, 0);
+            
+            // Convert canvas to blob
+            canvas.toBlob(async (blob) => {
+                if (blob) {
+                    await copyBlobToClipboard(blob);
+                }
+            }, 'image/png');
+        } else {
+            // For images, fetch and copy
+            const response = await fetch(src);
+            const blob = await response.blob();
+            await copyBlobToClipboard(blob);
+        }
+    } catch (error) {
+        console.error('Copy failed:', error);
+    }
+}
+
+// Show a brief "Copied!" toast at mouse location
+function showCopyToast(event) {
+    // Create the toast element
+    const toast = document.createElement('div');
+    toast.textContent = 'Copied!';
+    toast.style.cssText = `
+        position: fixed;
+        padding: 8px 12px;
+        background: #28a745;
+        color: white;
+        border-radius: 4px;
+        font-size: 14px;
+        font-weight: bold;
+        pointer-events: none;
+        z-index: 10000;
+        animation: fadeInOut 1.5s ease-out;
+    `;
+    
+    // Position at mouse location
+    if (event) {
+        toast.style.left = event.clientX + 'px';
+        toast.style.top = (event.clientY - 30) + 'px';
+    } else {
+        // Fallback to center if no event
+        toast.style.left = '50%';
+        toast.style.top = '50%';
+        toast.style.transform = 'translate(-50%, -50%)';
+    }
+    
+    // Add to body
+    document.body.appendChild(toast);
+    
+    // Remove after animation
+    setTimeout(() => {
+        document.body.removeChild(toast);
+    }, 1500);
 }
 
 // Execute FFmpeg command and toggle auto-execute
@@ -1529,6 +1638,12 @@ let hoveredMessage = null;
 let hoveredImage = null;
 
 // Track hovered messages that contain images
+// Track mouse position for copy feedback
+document.addEventListener('mousemove', (e) => {
+    window.lastMouseX = e.clientX;
+    window.lastMouseY = e.clientY;
+});
+
 document.addEventListener('mouseover', (e) => {
     // Check if hovering over a message that contains media
     const message = e.target.closest('.message');
@@ -1572,6 +1687,9 @@ document.addEventListener('keydown', async (e) => {
             
             // For video elements, we'll copy the current frame
             if (hoveredImage.tagName === 'VIDEO') {
+                // Show feedback immediately
+                showCopyFeedback(hoveredImage, 'Video frame copied!');
+                
                 // Create a canvas to capture the current video frame
                 const canvas = document.createElement('canvas');
                 canvas.width = hoveredImage.videoWidth;
@@ -1583,15 +1701,16 @@ document.addEventListener('keydown', async (e) => {
                 canvas.toBlob(async (blob) => {
                     if (blob) {
                         await copyBlobToClipboard(blob);
-                        showCopyFeedback(hoveredImage, 'Video frame copied!');
                     }
                 }, 'image/png');
             } else {
+                // Show feedback immediately
+                showCopyFeedback(hoveredImage, 'Image copied!');
+                
                 // For images, fetch and copy
                 const response = await fetch(src);
                 const blob = await response.blob();
                 await copyBlobToClipboard(blob);
-                showCopyFeedback(hoveredImage, 'Image copied!');
             }
         } catch (error) {
             showCopyFeedback(hoveredImage, 'Copy failed!', true);
@@ -1651,21 +1770,28 @@ function showCopyFeedback(element, message, isError = false) {
     feedback.className = 'copy-feedback';
     feedback.textContent = message;
     feedback.style.cssText = `
-        position: absolute;
+        position: fixed;
         background: ${isError ? '#dc3545' : '#28a745'};
         color: white;
-        padding: 4px 8px;
+        padding: 8px 12px;
         border-radius: 4px;
-        font-size: 12px;
+        font-size: 14px;
+        font-weight: bold;
         pointer-events: none;
-        z-index: 1000;
-        animation: fadeInOut 1.5s ease-in-out;
+        z-index: 10000;
+        animation: fadeInOut 1.5s ease-out;
     `;
     
-    // Position feedback near the element
-    const rect = element.getBoundingClientRect();
-    feedback.style.left = rect.left + 'px';
-    feedback.style.top = (rect.top - 30) + 'px';
+    // Position feedback at mouse location if available, otherwise near element
+    if (window.lastMouseX !== undefined && window.lastMouseY !== undefined) {
+        feedback.style.left = window.lastMouseX + 'px';
+        feedback.style.top = (window.lastMouseY - 30) + 'px';
+    } else {
+        // Fallback to element position
+        const rect = element.getBoundingClientRect();
+        feedback.style.left = rect.left + 'px';
+        feedback.style.top = (rect.top - 30) + 'px';
+    }
     
     document.body.appendChild(feedback);
     

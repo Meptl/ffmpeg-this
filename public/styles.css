@@ -717,7 +717,7 @@ header > * {
 }
 
 .command-section {
-    margin-bottom: 1rem;
+    margin-bottom: 0.5rem;
     padding: 1rem;
     background-color: #f8f9fa;
     border-radius: 6px;
@@ -741,7 +741,7 @@ header > * {
     border: 1px solid #404040;
     border-radius: 6px;
     padding: 1rem;
-    padding-bottom: 2.5rem; /* Extra padding for copy button */
+    padding-right: 60px; /* Extra padding to prevent copy button overlay */
     margin: 0;
     overflow-x: hidden;
     overflow-wrap: break-word;
@@ -1035,13 +1035,13 @@ header > * {
 /* Copy button overlay styles */
 .copy-btn-overlay {
     position: absolute;
-    bottom: 8px;
+    top: 8px;
     right: 8px;
     background: transparent;
     border: none;
     padding: 8px;
     cursor: pointer;
-    opacity: 0.6;
+    opacity: 0.7;
     transition: opacity 0.2s ease;
     z-index: 10;
 }
@@ -1365,6 +1365,52 @@ header > * {
     position: relative;
     z-index: 15;
     margin-right: 0;
+}
+
+/* Vertical button container for output media */
+.media-buttons-vertical {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-left: 0.5rem;
+    align-items: center;
+    justify-content: center;
+}
+
+.media-embed.output-media {
+    display: flex;
+    align-items: center;
+}
+
+.media-buttons-vertical .region-select-btn,
+.media-buttons-vertical .download-btn,
+.media-buttons-vertical .copy-media-btn {
+    margin: 0;
+}
+
+/* Copy media button styles */
+.copy-media-btn {
+    background-color: #6c757d;
+    color: white;
+    border: none;
+    padding: 0.4rem;
+    border-radius: 4px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+}
+
+.copy-media-btn:hover {
+    background-color: #5a6268;
+}
+
+.copy-media-btn img {
+    filter: brightness(0) invert(1); /* Make SVG white */
 }
 
 .region-selection-overlay {
