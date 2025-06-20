@@ -44,13 +44,34 @@ if (fileToPreConfigure) {
   setPreConfiguredFile(fileToPreConfigure);
 }
 
-app.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
-  
-  if (options.open) {
-    open(`http://localhost:${PORT}`);
-  }
-});
+// Function to try starting the server on a port
+const tryStartServer = (port, attempt = 1) => {
+  const server = app.listen(port, () => {
+    console.log(`Server running at http://localhost:${port}`);
+    
+    if (options.open) {
+      open(`http://localhost:${port}`);
+    }
+  });
+
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE' && attempt < 5) {
+      console.log(`Port ${port} is in use, trying port ${port + 1}...`);
+      tryStartServer(port + 1, attempt + 1);
+    } else if (err.code === 'EADDRINUSE') {
+      console.error(`Unable to start server: Tried ports ${PORT} through ${PORT + 4}, all are in use.`);
+      process.exit(1);
+    } else {
+      console.error('Server error:', err);
+      process.exit(1);
+    }
+  });
+
+  return server;
+};
+
+// Start the server
+tryStartServer(PORT);
 
 // Handle graceful shutdown
 process.on('SIGINT', () => {
