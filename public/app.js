@@ -558,7 +558,12 @@ function addInitialFileEmbed() {
     messageDiv.className = 'message user initial-media';
     messageDiv.id = 'initial-file-embed';
     
-    const showRegionBtn = initialFile.filePath === mostRecentMediaPath;
+    // Update mostRecentMediaPath to the initial file
+    mostRecentMediaPath = initialFile.filePath;
+    
+    // Always show region button for initial media (videos and images)
+    const mediaType = getMediaType(initialFile.filePath);
+    const showRegionBtn = mediaType === 'video' || mediaType === 'image';
     const mediaEmbed = createMediaEmbed(initialFile.filePath, initialFile.originalName, true, true, showRegionBtn);
     
     messageDiv.innerHTML = `
