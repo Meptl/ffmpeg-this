@@ -4,7 +4,7 @@ A chat interface to run ffmpeg commands.
 
 ## Installation
 
-### Executeable
+### Executable
 See the executables in the releases page.
 
 ### Local
