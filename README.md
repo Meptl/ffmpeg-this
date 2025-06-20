@@ -2,8 +2,7 @@
 
 A chat interface to run ffmpeg commands.
 
-https://github.com/user-attachments/assets/16d435b6-1dec-4482-88b8-e93d47ba5018
-
+https://github.com/user-attachments/assets/54700e73-8245-42d4-aab3-f3b7dc0155ce
 
 ## Installation
 
