@@ -127,7 +127,6 @@ These will be in this exact JSON format:
 The region field (when not null) specifies a region of interest:
 - "x,y widthxheight" where x,y is the top-left corner in pixels
 - Example: "100,200 1280x720" = offset (100,200), size 1280x720
-- Only apply region-based operations when explicitly requested
 
 For every response, you must provide output in this exact JSON format:
 {
@@ -144,7 +143,11 @@ Rules:
 - For video operations, maintain quality unless asked to compress
 - For audio extraction, use appropriate codec (mp3, wav, etc.)
 - If region is given, but no region specific operation is requested, ignore the field.
+- IMPORTANT: A region specifier indicates WHERE to apply an effect, NOT to crop the output to that region
+- Always preserve the full video/image dimensions unless explicitly asked to crop
+- When a region is given, use overlay techniques to apply the effect only to that region
 - The system will handle file path substitution automatically
+- NEVER use shell commands, command substitution ($(...)), or external tools within the ffmpeg command
 - If the operation is unclear or impossible, explain in the error field;
 
 Operations Reference:
