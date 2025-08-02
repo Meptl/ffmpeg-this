@@ -4,6 +4,7 @@ A chat interface to run ffmpeg commands.
 
 https://github.com/user-attachments/assets/16d435b6-1dec-4482-88b8-e93d47ba5018
 
+Note that this does in fact run scripts provided by a blackbox.
 
 ## Installation
 
