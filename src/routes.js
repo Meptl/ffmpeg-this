@@ -404,6 +404,125 @@ router.get('/serve-file', (req, res) => {
   }
 });
 
+// Get file information endpoint
+router.get('/file-info', async (req, res) => {
+  try {
+    const filePath = req.query.path;
+    
+    if (!filePath) {
+      return res.status(400).json({ error: 'No file path provided' });
+    }
+    
+    // Resolve to absolute path and check if file exists
+    const fullPath = path.resolve(filePath);
+    
+    if (!fs.existsSync(fullPath)) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+    
+    // Check if it's a file (not a directory)
+    const stats = fs.statSync(fullPath);
+    if (!stats.isFile()) {
+      return res.status(400).json({ error: 'Path is not a file' });
+    }
+    
+    // Get basic file info
+    const ext = path.extname(fullPath).toLowerCase();
+    const fileInfo = {
+      extension: ext,
+      size: stats.size,
+      lastModified: stats.mtime
+    };
+    
+    // Use ffprobe to get media information for all files
+    try {
+      const ffprobe = spawn('ffprobe', [
+        '-v', 'quiet',
+        '-print_format', 'json',
+        '-show_format',
+        '-show_streams',
+        fullPath
+      ]);
+      
+      let stdout = '';
+      let stderr = '';
+      
+      ffprobe.stdout.on('data', (data) => {
+        stdout += data.toString();
+      });
+      
+      ffprobe.stderr.on('data', (data) => {
+        stderr += data.toString();
+      });
+      
+      await new Promise((resolve, reject) => {
+        ffprobe.on('close', (code) => {
+          if (code === 0) {
+            try {
+              const probeResult = JSON.parse(stdout);
+              
+              // Look for video stream (could be video file or image file)
+              const videoStream = probeResult.streams.find(stream => stream.codec_type === 'video');
+              if (videoStream) {
+                fileInfo.width = videoStream.width;
+                fileInfo.height = videoStream.height;
+                fileInfo.codec = videoStream.codec_name;
+                
+                // Determine if this is actually an image based on the format
+                if (probeResult.format) {
+                  const formatName = probeResult.format.format_name;
+                  const imageFormats = ['image2', 'png_pipe', 'jpeg_pipe', 'gif', 'webp_pipe', 'bmp_pipe', 'tiff_pipe'];
+                  const singleImageFormats = ['mjpeg', 'png', 'gif', 'webp', 'bmp', 'tiff'];
+                  
+                  // Check if it's a static image format
+                  if (imageFormats.some(fmt => formatName.includes(fmt)) || 
+                      singleImageFormats.includes(formatName) ||
+                      (videoStream.nb_frames === '1') || 
+                      (videoStream.nb_frames === 1)) {
+                    fileInfo.isImage = true;
+                  } else {
+                    fileInfo.isVideo = true;
+                    fileInfo.duration = probeResult.format.duration;
+                  }
+                }
+              }
+              
+              // Look for audio stream
+              const audioStream = probeResult.streams.find(stream => stream.codec_type === 'audio');
+              if (audioStream) {
+                fileInfo.hasAudio = true;
+                fileInfo.audioCodec = audioStream.codec_name;
+                if (!videoStream) {
+                  // Pure audio file
+                  fileInfo.isAudio = true;
+                  fileInfo.duration = probeResult.format.duration;
+                }
+              }
+              
+              resolve();
+            } catch (parseError) {
+              console.error('Error parsing ffprobe output:', parseError);
+              resolve(); // Continue without media info
+            }
+          } else {
+            console.error('ffprobe failed:', stderr);
+            resolve(); // Continue without media info
+          }
+        });
+      });
+    } catch (error) {
+      console.error('Error getting media information:', error);
+      // Continue without media info
+    }
+    
+    res.json(fileInfo);
+    
+  } catch (error) {
+    console.error('Error getting file info:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Global map to store SSE connections
 const sseConnections = new Map();
 

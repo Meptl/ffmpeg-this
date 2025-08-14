@@ -998,6 +998,11 @@ function createMediaEmbed(filePath, fileName, isResponseMedia = false, hideDownl
         ${downloadIcon}
     </button>`;
     
+    // Info button for all media files
+    const infoButton = `<button class="info-btn" onclick="showMediaInfo('${filePath.replace(/'/g, "\\'")}', '${safeFileName.replace(/'/g, "\\'")}', '${mediaType}', this)" title="File Info">
+        <img src="assets/info.svg" alt="Info" width="20" height="20" style="vertical-align: middle;">
+    </button>`;
+    
     switch (mediaType) {
         case 'audio':
             if (isResponseMedia) {
@@ -1007,12 +1012,15 @@ function createMediaEmbed(filePath, fileName, isResponseMedia = false, hideDownl
                             <source src="/api/serve-file?path=${encodeURIComponent(filePath)}" type="audio/${getFileExtension(filePath)}">
                             Your browser does not support the audio element.
                         </audio>
-                        ${downloadButton}
+                        <div class="media-buttons-vertical">
+                            ${infoButton}
+                            ${downloadButton}
+                        </div>
                     </div>`;
             } else {
                 return `
                     <div class="media-embed audio-embed">
-                        <div class="media-header">${downloadButton} 🎵 ${safeFileName}</div>
+                        <div class="media-header">${infoButton}${downloadButton} 🎵 ${safeFileName}</div>
                         <audio controls>
                             <source src="/api/serve-file?path=${encodeURIComponent(filePath)}" type="audio/${getFileExtension(filePath)}">
                             Your browser does not support the audio element.
@@ -1037,13 +1045,14 @@ function createMediaEmbed(filePath, fileName, isResponseMedia = false, hideDownl
                             <button class="copy-media-btn" onclick="copyMedia(this, event)" title="Copy Video Frame">
                                 <img src="assets/copy.svg" alt="Copy" width="20" height="20">
                             </button>
+                            ${infoButton}
                             ${downloadButton}
                         </div>
                     </div>`;
             } else {
                 return `
                     <div class="media-embed video-embed">
-                        <div class="media-header">${showRegionButton ? '<button class="region-select-btn" onclick="toggleRegionSelectMode(this)" title="Select Region">✂️</button>' : ''}${downloadButton} 🎬 ${safeFileName}</div>
+                        <div class="media-header">${showRegionButton ? '<button class="region-select-btn" onclick="toggleRegionSelectMode(this)" title="Select Region">✂️</button>' : ''}${infoButton}${downloadButton} 🎬 ${safeFileName}</div>
                         <div class="region-selection-container" data-file-path="${filePath.replace(/"/g, '&quot;')}">
                             <video controls>
                                 <source src="/api/serve-file?path=${encodeURIComponent(filePath)}" type="video/${getFileExtension(filePath)}">
@@ -1069,13 +1078,14 @@ function createMediaEmbed(filePath, fileName, isResponseMedia = false, hideDownl
                             <button class="copy-media-btn" onclick="copyMedia(this, event)" title="Copy Image">
                                 <img src="assets/copy.svg" alt="Copy" width="20" height="20">
                             </button>
+                            ${infoButton}
                             ${downloadButton}
                         </div>
                     </div>`;
             } else {
                 return `
                     <div class="media-embed image-embed">
-                        <div class="media-header">${showRegionButton ? '<button class="region-select-btn" onclick="toggleRegionSelectMode(this)" title="Select Region">✂️</button>' : ''}${downloadButton} 🖼️ ${safeFileName}</div>
+                        <div class="media-header">${showRegionButton ? '<button class="region-select-btn" onclick="toggleRegionSelectMode(this)" title="Select Region">✂️</button>' : ''}${infoButton}${downloadButton} 🖼️ ${safeFileName}</div>
                         <div class="region-selection-container" data-file-path="${filePath.replace(/"/g, '&quot;')}">
                             <img src="/api/serve-file?path=${encodeURIComponent(filePath)}" alt="${safeFileName}" loading="lazy">
                             <div class="region-selection-overlay"></div>
@@ -1089,12 +1099,15 @@ function createMediaEmbed(filePath, fileName, isResponseMedia = false, hideDownl
                 return `
                     <div class="media-embed file-embed output-media">
                         <div class="file-info">File type not supported for preview</div>
-                        ${downloadButton}
+                        <div class="media-buttons-vertical">
+                            ${infoButton}
+                            ${downloadButton}
+                        </div>
                     </div>`;
             } else {
                 return `
                     <div class="media-embed file-embed">
-                        <div class="media-header">${downloadButton} 📄 ${safeFileName}</div>
+                        <div class="media-header">${infoButton}${downloadButton} 📄 ${safeFileName}</div>
                         <div class="file-info">File type not supported for preview</div>
                     </div>`;
             }
@@ -1620,6 +1633,115 @@ function addOutputMediaMessage(outputFilePath, afterMessageId) {
 
 // Region selection functions moved to region-selection.js module
 
+// Show media info tooltip
+async function showMediaInfo(filePath, fileName, mediaType, buttonElement) {
+    // Remove any existing tooltip
+    const existingTooltip = document.querySelector('.media-info-tooltip');
+    if (existingTooltip) {
+        existingTooltip.remove();
+        return; // If tooltip was already shown, just close it
+    }
+    
+    try {
+        // Get file info from server
+        const response = await fetch(`/api/file-info?path=${encodeURIComponent(filePath)}`);
+        const fileInfo = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(fileInfo.error || 'Failed to get file info');
+        }
+        
+        // Get the actual file extension from the file info
+        const fileExtension = fileInfo.extension ? fileInfo.extension.substring(1).toUpperCase() : 'Unknown';
+        
+        // Create tooltip content with actual file extension
+        let tooltipContent = `<div class="info-row"><strong>Type:</strong> ${fileExtension}</div>`;
+        
+        // Add resolution for images (now based on ffprobe detection)
+        if (fileInfo.isImage && fileInfo.width && fileInfo.height) {
+            tooltipContent += `<div class="info-row"><strong>Resolution:</strong> ${fileInfo.width} x ${fileInfo.height}</div>`;
+        }
+        
+        // Create tooltip element
+        const tooltip = document.createElement('div');
+        tooltip.className = 'media-info-tooltip';
+        tooltip.innerHTML = tooltipContent;
+        
+        // Add to body first so we can measure its width
+        tooltip.style.position = 'fixed';
+        tooltip.style.visibility = 'hidden'; // Hide while positioning
+        tooltip.style.zIndex = '10000';
+        document.body.appendChild(tooltip);
+        
+        // Position tooltip relative to the button
+        const buttonRect = buttonElement.getBoundingClientRect();
+        const tooltipRect = tooltip.getBoundingClientRect();
+        
+        // Check if this is a user message or AI message
+        const messageElement = buttonElement.closest('.message');
+        const isUserMessage = messageElement && messageElement.classList.contains('user');
+        
+        tooltip.style.top = buttonRect.top + 'px';
+        
+        if (isUserMessage) {
+            // Position on the left for user messages
+            tooltip.style.left = (buttonRect.left - tooltipRect.width - 10) + 'px';
+            tooltip.style.right = 'auto';
+        } else {
+            // Position on the right for AI messages (default behavior)
+            tooltip.style.left = (buttonRect.left + buttonRect.width + 10) + 'px';
+            tooltip.style.right = 'auto';
+        }
+        
+        // Make visible after positioning
+        tooltip.style.visibility = 'visible';
+        
+        // Remove tooltip when clicking outside or scrolling
+        const handleClickOutside = (e) => {
+            if (!tooltip.contains(e.target) && e.target !== buttonElement) {
+                cleanup();
+            }
+        };
+        
+        const handleScroll = () => {
+            cleanup();
+        };
+        
+        const cleanup = () => {
+            tooltip.remove();
+            document.removeEventListener('click', handleClickOutside);
+            document.removeEventListener('scroll', handleScroll, true); // true for capture phase to catch all scroll events
+        };
+        
+        // Add event listeners after a short delay to prevent immediate removal
+        setTimeout(() => {
+            document.addEventListener('click', handleClickOutside);
+            document.addEventListener('scroll', handleScroll, true); // true for capture phase to catch all scroll events
+        }, 100);
+        
+    } catch (error) {
+        console.error('Error getting file info:', error);
+        
+        // Show error tooltip
+        const tooltip = document.createElement('div');
+        tooltip.className = 'media-info-tooltip error';
+        tooltip.innerHTML = `<div class="info-row">Error loading file info</div>`;
+        
+        const buttonRect = buttonElement.getBoundingClientRect();
+        tooltip.style.position = 'fixed';
+        tooltip.style.left = (buttonRect.left + buttonRect.width + 10) + 'px';
+        tooltip.style.top = buttonRect.top + 'px';
+        tooltip.style.zIndex = '10000';
+        
+        document.body.appendChild(tooltip);
+        
+        // Remove error tooltip after 3 seconds
+        setTimeout(() => {
+            tooltip.remove();
+        }, 3000);
+    }
+}
+
 // Make functions globally available for inline event handlers
 window.clearRegionSelection = clearRegionSelection;
 window.toggleRegionSelectMode = toggleRegionSelectMode;
@@ -1628,6 +1750,7 @@ window.executeFFmpegCommand = executeFFmpegCommand;
 window.executeAndToggleAuto = executeAndToggleAuto;
 window.copyToClipboard = copyToClipboard;
 window.downloadFile = downloadFile;
+window.showMediaInfo = showMediaInfo;
 
 
 // Region selection initialization moved to main initialize() function
