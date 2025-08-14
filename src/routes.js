@@ -14,6 +14,7 @@ const systemRoutes = require('./routes/system');
 
 // Global variable for tracking current input file per session
 const sessionFileTracking = new Map(); // sessionId -> currentInputFile
+const sessionOriginalNameTracking = new Map(); // sessionId -> originalName
 
 
 // Create tmp directory for intermediate files and uploads
@@ -36,11 +37,24 @@ const storage = multer.diskStorage({
 const upload = multer({ storage: storage });
 
 
-// Generate unique output filename
-function generateOutputFilename(extension = 'out') {
-  const timestamp = Date.now();
+// Generate unique output filename based on input filename
+function generateOutputFilename(extension = 'out', originalName = null) {
   const random = Math.random().toString(36).substring(2, 8);
-  return path.join(tmpDir, `ffmpeg_${timestamp}_${random}.${extension}`);
+  
+  let baseName = 'ffmpeg';
+  
+  if (originalName) {
+    const inputBaseName = path.basename(originalName, path.extname(originalName));
+    
+    // Handle clipboard pastes (they start with "pasted-image-")
+    if (inputBaseName.startsWith('pasted-image-')) {
+      baseName = 'ffmpeg';
+    } else {
+      baseName = inputBaseName;
+    }
+  }
+  
+  return path.join(tmpDir, `${baseName}_${random}.${extension}`);
 }
 
 // Get session ID from request (using IP + user agent as simple session identifier)
@@ -56,6 +70,16 @@ function setCurrentInputFile(sessionId, filePath) {
 // Get current input file for session
 function getCurrentInputFile(sessionId) {
   return sessionFileTracking.get(sessionId);
+}
+
+// Set original name for session
+function setOriginalName(sessionId, originalName) {
+  sessionOriginalNameTracking.set(sessionId, originalName);
+}
+
+// Get original name for session
+function getOriginalName(sessionId) {
+  return sessionOriginalNameTracking.get(sessionId);
 }
 
 // Import apiConfigs from system routes
@@ -92,7 +116,8 @@ router.post('/chat', async (req, res) => {
     }
     
     // Generate output filename with temporary extension (will be updated based on AI response)
-    const outputFile = generateOutputFilename('tmp');
+    const originalName = getOriginalName(sessionId);
+    const outputFile = generateOutputFilename('tmp', originalName);
     
     // Get just the filename from the current input file
     const inputFilename = path.basename(currentInputFile);
@@ -289,6 +314,7 @@ router.post('/upload-file', (req, res) => {
       // Set this as the current input file for the session
       const sessionId = getSessionId(req);
       setCurrentInputFile(sessionId, file.path);
+      setOriginalName(sessionId, file.originalname);
 
       // Return file info
       res.json({
@@ -642,6 +668,8 @@ router.post('/execute-ffmpeg', async (req, res) => {
         if (result.outputFile) {
           const sessionId = getSessionId(req);
           setCurrentInputFile(sessionId, result.outputFile);
+          // Keep the same original name for chaining - don't update it
+          // The original basename should persist across multiple operations
         }
       } else {
         // Execution was cancelled - send cancelled message instead
@@ -786,7 +814,7 @@ router.post('/cancel-ffmpeg', async (req, res) => {
 
 
 // Mount system routes (pass session tracking functions)
-systemRoutes.setSessionTrackingFunctions(setCurrentInputFile, getSessionId);
+systemRoutes.setSessionTrackingFunctions(setCurrentInputFile, getSessionId, setOriginalName);
 router.use('/', systemRoutes);
 
 module.exports = router;

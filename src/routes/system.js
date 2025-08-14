@@ -28,10 +28,12 @@ function setPreConfiguredFile(filePath) {
 // Session tracking functions (set by routes.js)
 let setCurrentInputFileFunc = null;
 let getSessionIdFunc = null;
+let setOriginalNameFunc = null;
 
-function setSessionTrackingFunctions(setInputFile, getSessionId) {
+function setSessionTrackingFunctions(setInputFile, getSessionId, setOriginalName) {
   setCurrentInputFileFunc = setInputFile;
   getSessionIdFunc = getSessionId;
+  setOriginalNameFunc = setOriginalName;
 }
 
 // Check FFmpeg availability
@@ -159,9 +161,10 @@ router.get('/configured-providers', (req, res) => {
 router.get('/preconfigured-file', (req, res) => {
   if (preConfiguredFile) {
     // Set this as the current input file for the session
-    if (setCurrentInputFileFunc && getSessionIdFunc) {
+    if (setCurrentInputFileFunc && getSessionIdFunc && setOriginalNameFunc) {
       const sessionId = getSessionIdFunc(req);
       setCurrentInputFileFunc(sessionId, preConfiguredFile.path);
+      setOriginalNameFunc(sessionId, preConfiguredFile.originalName);
     }
     
     res.json({ file: preConfiguredFile });
