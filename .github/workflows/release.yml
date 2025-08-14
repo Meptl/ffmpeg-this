@@ -203,75 +203,48 @@ jobs:
         fi
 
     - name: Create Release
-      id: create_release
-      uses: actions/create-release@v1
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        # Use tag name for tags, 'main' for main branch
-        tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'main' }}
-        # Use tag name for tags, 'main' for main branch release name
-        release_name: ${{ github.ref_type == 'tag' && github.ref_name || 'main' }}
-        # Use latest commit message for main branch body, default (tag message) for tags
-        body: ${{ github.ref == 'refs/heads/main' && github.event.head_commit.message || '' }}
-        draft: false
-        # Mark main branch releases as pre-release, tags as full releases
-        prerelease: ${{ github.ref == 'refs/heads/main' }}
-        # Mark tagged releases as 'latest', main branch release not
-        latest: ${{ github.ref_type == 'tag' }}
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        RELEASE_TAG=""
+        RELEASE_NAME=""
+        BODY=""
+        PRERELEASE=""
+        LATEST=""
+        
+        if [[ "${{ github.ref_type }}" == "tag" ]]; then
+          RELEASE_TAG="${{ github.ref_name }}"
+          RELEASE_NAME="${{ github.ref_name }}"
+          PRERELEASE=""
+          LATEST="--latest"
+        elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+          RELEASE_TAG="main"
+          RELEASE_NAME="main"
+          BODY="${{ github.event.head_commit.message }}"
+          PRERELEASE="--prerelease"
+          LATEST=""
+        fi
+        
+        gh release create $RELEASE_TAG \
+          --title "$RELEASE_NAME" \
+          --notes "$BODY" \
+          $PRERELEASE \
+          $LATEST
 
-    # Upload Windows x64 build
-    - name: Upload Windows x64 Release Asset
-      uses: actions/upload-release-asset@v1
+    - name: Upload Release Assets
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./ffmpeg-this-win-x64/ffmpeg-this-win-x64.exe
-        asset_name: ffmpeg-this-win-x64.exe
-        asset_content_type: application/vnd.microsoft.portable-executable
-
-
-    # Upload macOS x64 build
-    - name: Upload macOS x64 Release Asset
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./ffmpeg-this-macos-x64/ffmpeg-this-macos-x64
-        asset_name: ffmpeg-this-macos-x64
-        asset_content_type: application/octet-stream
-
-    # Upload macOS arm64 build
-    - name: Upload macOS arm64 Release Asset
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./ffmpeg-this-macos-arm64/ffmpeg-this-macos-arm64
-        asset_name: ffmpeg-this-macos-arm64
-        asset_content_type: application/octet-stream
-
-    # Upload Linux x64 build
-    - name: Upload Linux x64 Release Asset
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./ffmpeg-this-linux-x64/ffmpeg-this-linux-x64
-        asset_name: ffmpeg-this-linux-x64
-        asset_content_type: application/octet-stream
-
-    # Upload Linux arm64 build
-    - name: Upload Linux arm64 Release Asset
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./ffmpeg-this-linux-arm64/ffmpeg-this-linux-arm64
-        asset_name: ffmpeg-this-linux-arm64
-        asset_content_type: application/octet-stream
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        RELEASE_TAG=""
+        if [[ "${{ github.ref_type }}" == "tag" ]]; then
+          RELEASE_TAG="${{ github.ref_name }}"
+        elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+          RELEASE_TAG="main"
+        fi
+        
+        gh release upload $RELEASE_TAG \
+          ./ffmpeg-this-win-x64/ffmpeg-this-win-x64.exe \
+          ./ffmpeg-this-macos-x64/ffmpeg-this-macos-x64 \
+          ./ffmpeg-this-macos-arm64/ffmpeg-this-macos-arm64 \
+          ./ffmpeg-this-linux-x64/ffmpeg-this-linux-x64 \
+          ./ffmpeg-this-linux-arm64/ffmpeg-this-linux-arm64
