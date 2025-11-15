@@ -219,7 +219,10 @@ jobs:
         elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
           RELEASE_TAG="main"
           RELEASE_NAME="main"
-          BODY="${{ github.event.head_commit.message }}"
+          BODY=$(cat <<'EOF'
+${{ github.event.head_commit.message }}
+EOF
+)
           gh release create "$RELEASE_TAG" \
             --title "$RELEASE_NAME" \
             --notes "$BODY"
