@@ -85,6 +85,34 @@ function getOriginalName(sessionId) {
 // Import apiConfigs from system routes
 const { apiConfigs } = systemRoutes;
 
+async function getFFprobeData(filePath) {
+  return new Promise((resolve, reject) => {
+    const ffprobe = spawn('ffprobe', [
+      '-hide_banner',
+      filePath
+    ]);
+
+    let stdout = '';
+    let stderr = '';
+
+    ffprobe.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+
+    ffprobe.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+
+    ffprobe.on('close', (code) => {
+      if (code === 0) {
+        resolve(stderr);
+      } else {
+        reject(new Error(`ffprobe failed with code ${code}: ${stderr}`));
+      }
+    });
+  });
+}
+
 // Chat endpoint
 router.post('/chat', async (req, res) => {
   const { provider, message, conversationHistory = [], userInput, preCalculatedRegion } = req.body;
@@ -121,16 +149,20 @@ router.post('/chat', async (req, res) => {
     
     // Get just the filename from the current input file
     const inputFilename = path.basename(currentInputFile);
-    
+
     // Use pre-calculated region if provided
     const regionString = preCalculatedRegion || null;
-    
+
+    // Get ffprobe data for the current input file
+    const ffprobeData = await getFFprobeData(currentInputFile);
+
     // Build JSON message directly
     const jsonMessage = {
       input_filename: inputFilename,
       operation: userInput || message,
       use_placeholders: true,
-      region: regionString
+      region: regionString,
+      ffprobe: ffprobeData
     };
     
     const formattedJsonMessage = JSON.stringify(jsonMessage, null, 2);
@@ -145,13 +177,16 @@ These will be in this exact JSON format:
   "input_filename": "example.mp4",
   "operation": "description of what to do",
   "use_placeholders": true,
-  "region": null | "x,y widthxheight"
+  "region": null | "x,y widthxheight",
+  "ffprobe": { ffprobe data object }
 }
 
 
 The region field (when not null) specifies a region of interest:
 - "x,y widthxheight" where x,y is the top-left corner in pixels
 - Example: "100,200 1280x720" = offset (100,200), size 1280x720
+
+The ffprobe field contains the output of ffprobe for the input file.
 
 For every response, you must provide output in this exact JSON format:
 {
