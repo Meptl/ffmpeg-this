@@ -1140,6 +1140,7 @@ function downloadFile(filePath, fileName) {
     const link = document.createElement('a');
     link.href = `/api/serve-file?path=${encodeURIComponent(filePath)}`;
     link.download = fileName;
+    link.target = '_self';
     link.style.display = 'none';
     
     // Add to DOM, click, and remove
