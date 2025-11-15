@@ -184,6 +184,13 @@ jobs:
     - name: Download all artifacts
       uses: actions/download-artifact@v4
 
+    - name: Restore executable permissions
+      run: |
+        chmod +x ./ffmpeg-this-macos-x64/ffmpeg-this-macos-x64
+        chmod +x ./ffmpeg-this-macos-arm64/ffmpeg-this-macos-arm64
+        chmod +x ./ffmpeg-this-linux-x64/ffmpeg-this-linux-x64
+        chmod +x ./ffmpeg-this-linux-arm64/ffmpeg-this-linux-arm64
+
     # Delete previous release (tag or main)
     - name: Delete existing release
       env:
