@@ -205,10 +205,10 @@ jobs:
     - name: Create Release
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
       run: |
         RELEASE_TAG=""
         RELEASE_NAME=""
-        BODY=""
 
         if [[ "${{ github.ref_type }}" == "tag" ]]; then
           RELEASE_TAG="${{ github.ref_name }}"
@@ -219,13 +219,9 @@ jobs:
         elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
           RELEASE_TAG="main"
           RELEASE_NAME="main"
-          BODY=$(cat <<'EOF'
-${{ github.event.head_commit.message }}
-EOF
-)
           gh release create "$RELEASE_TAG" \
             --title "$RELEASE_NAME" \
-            --notes "$BODY"
+            --notes "$COMMIT_MESSAGE"
         fi
 
     - name: Upload Release Assets
