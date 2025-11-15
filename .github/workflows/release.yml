@@ -209,23 +209,21 @@ jobs:
         RELEASE_TAG=""
         RELEASE_NAME=""
         BODY=""
-        LATEST=""
-        
+
         if [[ "${{ github.ref_type }}" == "tag" ]]; then
           RELEASE_TAG="${{ github.ref_name }}"
           RELEASE_NAME="${{ github.ref_name }}"
-          LATEST="--latest"
+          gh release create "$RELEASE_TAG" \
+            --title "$RELEASE_NAME" \
+            --latest
         elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
           RELEASE_TAG="main"
           RELEASE_NAME="main"
           BODY="${{ github.event.head_commit.message }}"
-          LATEST=""
+          gh release create "$RELEASE_TAG" \
+            --title "$RELEASE_NAME" \
+            --notes "$BODY"
         fi
-        
-        gh release create $RELEASE_TAG \
-          --title "$RELEASE_NAME" \
-          --notes "$BODY" \
-          $LATEST
 
     - name: Upload Release Assets
       env:
