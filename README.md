@@ -14,7 +14,7 @@ See the executables in the releases page.
 ### Local
 ```
 git submodule update --init --recursive
-npm prepare-ffmpeg
+npm run prepare-ffmpeg
 npm install
 npm run dev
 ```
